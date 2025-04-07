@@ -1,4 +1,4 @@
-import userModel from "../models/userModel"
+import userModel from "../models/userModel.js"
 
 const addFriend = async (req, res) => {
   const { senderPhone, receiverPhone  } = req.body

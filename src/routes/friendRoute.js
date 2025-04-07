@@ -7,4 +7,4 @@ const router = express.Router()
 router.post("/request",verifyToken, friendController.addFriend)
 router.post("/accept", verifyToken, friendController.acceptFriend)
 
-export default friendRoute = router
+export default router
