@@ -78,16 +78,18 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   const {phoneNumber, password} = req.body
+  console.log(req.body);
+  
   try {
     const existingUser = await userModel.findOne({phoneNumber})
     if(!existingUser) {
-      return res.status(404).json("Không tồn tại người dùng!!!")
+      return res.status(404).json({ error: "Không tồn tại người dùng!!!" })
     }
 
     const isMatchPassword = await bcryptjs.compare(password, existingUser.password)
 
     if(!isMatchPassword) {
-      return res.status(401).json("Sai mật khẩu")
+      return res.status(401).json({ error: "Sai mật khẩu" })
     }
 
     const userpayload = {
@@ -99,12 +101,12 @@ const login = async (req, res) => {
     const refreshToken = await generateRefreshToken(userpayload);
 
      // Lưu refreshToken vào cookie
-     res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false, // ở deverlopment thì dùng false, product thì dùng true
-      path: "/", // Toàn bộ ứng dụng được sử dụng cooki này
-      sameSite: "strict", // bảo mật
-    });
+    //  res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: false, // ở deverlopment thì dùng false, product thì dùng true
+    //   path: "/", // Toàn bộ ứng dụng được sử dụng cooki này
+    //   sameSite: "strict", // bảo mật
+    // });
 
     res.status(200).json({
       message: "Login successfully",

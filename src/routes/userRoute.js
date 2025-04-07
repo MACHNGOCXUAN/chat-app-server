@@ -9,4 +9,4 @@ router.post("/login", userController.login)
 router.post("/logout", userController.logout)
 router.post("/refresh", userController.refreshToken)
 
-export default userRoute = router
+export default router
