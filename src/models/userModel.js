@@ -24,8 +24,7 @@ const userSchema = new mongoose.Schema({
     unique: true
   },
   avatarURL: {
-    type: String,
-    required: true
+    type: String
   },
   status: {
     type: String,
