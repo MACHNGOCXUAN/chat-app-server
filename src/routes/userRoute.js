@@ -11,6 +11,8 @@ router.post("/logout", userController.logout)
 router.post("/refresh", userController.refreshToken)
 router.post("/verify", verification)
 router.post("/checkPhoneAndEmail", userController.checkUserExists)
+router.post("/checkEmail", userController.checkEmailExists)
 router.get("/users", userController.getAllUser)
+router.put("/forgotPasswrod", userController.forgotPassword)
 
 export default router

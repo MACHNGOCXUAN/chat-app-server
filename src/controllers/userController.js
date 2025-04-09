@@ -32,12 +32,16 @@ const checkEmailExists = async (req, res) => {
   const { email } = req.body;
   try {
     const user = await userModel.findOne({ email });
-    if (user) {
+    if (!user) {
       return res.status(409).json({ 
-        success: true,
-        message: "Email đã được đăng ký" 
+        success: false,
+        message: "Không tồn tại người dùng " + email 
       });
     }
+    res.status(200).json({
+      success: true,
+      user: user
+    })
   } catch (error) {
     console.error(error);
     res.status(500).json({ 
@@ -251,6 +255,33 @@ const getAllUser = async (req, res) => {
   }
 }
 
+const forgotPassword = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: 'Người dùng không tồn tại!!!' });
+    }
+
+    const salt = await bcryptjs.genSalt(10);
+    const hashedPassword = await bcryptjs.hash(password, salt);
+
+    user.password = hashedPassword;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Mật khẩu đã được cập nhật thành công!',
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+};
+
+
+
 
 
 export const userController = {
@@ -259,5 +290,7 @@ export const userController = {
   logout,
   refreshToken,
   checkUserExists,
-  getAllUser
+  getAllUser,
+  checkEmailExists,
+  forgotPassword
 }
