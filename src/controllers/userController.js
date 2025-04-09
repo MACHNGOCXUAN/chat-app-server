@@ -32,12 +32,16 @@ const checkEmailExists = async (req, res) => {
   const { email } = req.body;
   try {
     const user = await userModel.findOne({ email });
-    if (user) {
+    if (!user) {
       return res.status(409).json({ 
-        success: true,
-        message: "Email đã được đăng ký" 
+        success: false,
+        message: "Không tồn tại người dùng " + email 
       });
     }
+    res.status(200).json({
+      success: true,
+      user: user
+    })
   } catch (error) {
     console.error(error);
     res.status(500).json({ 
@@ -153,11 +157,11 @@ const register = async (req, res) => {
 
 
 const login = async (req, res) => {
-  const {phoneNumber, password} = req.body
+  const {email, password} = req.body
   console.log(req.body);
   
   try {
-    const existingUser = await userModel.findOne({phoneNumber})
+    const existingUser = await userModel.findOne({email})
     if(!existingUser) {
       return res.status(404).json({ error: "Không tồn tại người dùng!!!" })
     }
@@ -251,6 +255,146 @@ const getAllUser = async (req, res) => {
   }
 }
 
+const forgotPassword = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: 'Người dùng không tồn tại!!!' });
+    }
+
+    const salt = await bcryptjs.genSalt(10);
+    const hashedPassword = await bcryptjs.hash(password, salt);
+
+    user.password = hashedPassword;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Mật khẩu đã được cập nhật thành công!',
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+};
+
+const updatePassword = async (req, res) => {
+  const { email, password, newPassword } = req.body;
+
+  try {
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: 'Người dùng không tồn tại!!!' });
+    }
+
+    const isMatchPassword = await bcryptjs.compare(password, user.password)
+
+    if(!isMatchPassword) {
+      return res.status(401).json({ error: "Sai mật khẩu" })
+    }
+
+    const salt = await bcryptjs.genSalt(10);
+    const hashedPassword = await bcryptjs.hash(newPassword, salt);
+
+    user.password = hashedPassword;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Mật khẩu đã được cập nhật thành công!',
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+}
+
+const updateImageCover = async (req, res) => {
+  try {
+
+    const imageURL = req.files?.coverImage?.[0]
+    
+    const coverimage = await uploadFile(imageURL)
+    const email = req.body.email
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: 'Người dùng không tồn tại!!!' });
+    }
+
+    user.coverImage = coverimage
+    await user.save()
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật ảnh bìa thành công',
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+}
+
+const updateAvatar = async (req, res) => {
+  try {
+
+    const imageURL = req.files?.avatarURL?.[0]
+    console.log(imageURL);
+    
+    
+    const avatar = await uploadFile(imageURL)
+    const email = req.body.email
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: 'Người dùng không tồn tại!!!' });
+    }
+
+    user.avatarURL = avatar
+    await user.save()
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật ảnh đại diện thành công',
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+}
+
+const updateProfile = async (req, res) => {
+  try {
+    // const userId = req.user._id;
+    
+    const userId = req.body._id
+    const { email, username, gender, dateOfBirth } = req.body
+
+    const updatedUser = await userModel.findByIdAndUpdate(
+      userId,
+      {
+        email,
+        username,
+        gender,
+        dateOfBirth,
+      },
+      { new: true, runValidators: true }
+    )
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'Người dùng không tồn tại' });
+    }
+
+    res.status(200).json({
+      message: 'Cập nhật thông tin thành công',
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+}
+
+
+
 
 
 export const userController = {
@@ -259,5 +403,11 @@ export const userController = {
   logout,
   refreshToken,
   checkUserExists,
-  getAllUser
+  getAllUser,
+  checkEmailExists,
+  forgotPassword,
+  updatePassword,
+  updateImageCover,
+  updateAvatar,
+  updateProfile
 }
