@@ -35,7 +35,8 @@ const userSchema = new mongoose.Schema({
     type: Date
   },
   coverImage: {
-    type: String
+    type: String,
+    default: "https://i.pinimg.com/736x/dc/e3/cb/dce3cb7b2daeb86ca5bd921ae06f3b2f.jpg"
   },
   dateOfBirth: {
     type: Date,

@@ -2,6 +2,7 @@ import express from 'express'
 import { userController } from '../controllers/userController.js'
 import upload from '../middleware/upload.js'
 import verification from '../utils/sendEmail.js'
+import verifyToken from '../middleware/verifyMiddleware.js'
 
 const router = express.Router()
 
@@ -14,5 +15,9 @@ router.post("/checkPhoneAndEmail", userController.checkUserExists)
 router.post("/checkEmail", userController.checkEmailExists)
 router.get("/users", userController.getAllUser)
 router.put("/forgotPasswrod", userController.forgotPassword)
+router.put("/updatePassword", userController.updatePassword)
+router.put("/updateImageCover", upload, userController.updateImageCover)
+router.put("/updateProfile", userController.updateProfile)
+router.put("/updateAvatar", upload, userController.updateAvatar)
 
 export default router
