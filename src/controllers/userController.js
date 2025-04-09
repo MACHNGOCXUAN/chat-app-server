@@ -26,6 +26,83 @@ const generateRefreshToken = async (user) => {
   return refreshToken
 };
 
+// viet giup toi ham check email da ton tai hay chua
+// kiem tra xem email da ton tai hay chua
+const checkEmailExists = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await userModel.findOne({ email });
+    if (user) {
+      return res.status(409).json({ 
+        success: true,
+        message: "Email đã được đăng ký" 
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Lỗi server. Vui lòng thử lại sau!' 
+    });
+    
+  }
+}
+
+const checkUserExists = async (req, res) => {
+  const { phoneNumber, email } = req.body;
+
+  console.log(email, phoneNumber);
+  
+  try {
+    // Kiểm tra cả hai trường
+    if (!phoneNumber && !email) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Vui lòng cung cấp số điện thoại hoặc email" 
+      });
+    }
+
+    const conditions = [];
+    if (phoneNumber) conditions.push({ phoneNumber });
+    if (email) conditions.push({ email });
+
+    // Tìm user với $or
+    const existingUser = await userModel.findOne({ 
+      $or: conditions 
+    });
+
+    if (existingUser) {
+      // Kiểm tra xem trùng phone hay email
+      let message = '';
+      if (existingUser.phoneNumber === phoneNumber) {
+        message = "Số điện thoại đã được đăng ký";
+      } 
+      if (existingUser.email === email) {
+        message = message 
+          ? "Số điện thoại và email đã được đăng ký" 
+          : "Email đã được đăng ký";
+      }
+
+      return res.status(409).json({ // 409 Conflict
+        success: false,
+        message
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Có thể đăng ký tài khoản mới"
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Lỗi server. Vui lòng thử lại sau!' 
+    });
+  }
+}
+
 const register = async (req, res) => {
 
   const { username, phoneNumber, dateOfBirth, gender, password, email } = req.body
@@ -45,11 +122,10 @@ const register = async (req, res) => {
     const salt = await bcryptjs.genSalt(10)
     const hashpassword = await bcryptjs.hash(password,salt)
 
-    const avatar = await uploadFile(req.file)
+    // const avatar = await uploadFile(req.file)
     const newUser = new userModel({
       username, 
       phoneNumber,
-      avatarURL: avatar,
       dateOfBirth: new Date(dateOfBirth),
       gender,
       password: hashpassword,
@@ -71,7 +147,7 @@ const register = async (req, res) => {
     res.status(201).json({message: "Đăng ký thành công", user: userResponse});
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Lỗi server. Vui lòng thử lại sau!' });
+    res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
   }
 }
 
@@ -165,11 +241,23 @@ const refreshToken = async (req, res) => {
   }
 }
 
+const getAllUser = async (req, res) => {
+  try {
+    const users = await userModel.find({})
+    res.status(200).json(users)
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+}
+
 
 
 export const userController = {
   register,
   login,
   logout,
-  refreshToken
+  refreshToken,
+  checkUserExists,
+  getAllUser
 }
