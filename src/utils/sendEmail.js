@@ -20,16 +20,18 @@ const handleSendMail = async (val) => {
 	} catch (error) {
 		return error;
 	}
+
 };
 
 const verification = async (req, res) => {
 	const { email } = req.body;
 
-	const verificationCode = Math.round(1000 + Math.random() * 9000);
+	const verificationCode = Math.floor(100000 + Math.random() * 900000);
+
 
 	try {
 		const data = {
-			from: `chat app verification`,
+			from: `zalo-cnm`,
 			to: email,
 			subject: 'Verification email code',
 			text: 'Your code to verification email',
