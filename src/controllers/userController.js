@@ -157,33 +157,36 @@ const register = async (req, res) => {
 
 
 const login = async (req, res) => {
-  const { email, phoneNumber, password } = req.body;
-  console.log("Login request body:", req.body);
-
+  const {email, password} = req.body
+  console.log(req.body);
+  
   try {
-    const existingUser = await userModel.findOne({
-      $or: [
-        { email: email },
-        { phoneNumber: phoneNumber }
-      ]
-    });
-
-    if (!existingUser) {
-      return res.status(404).json({ error: "Không tồn tại người dùng!!!" });
+    const existingUser = await userModel.findOne({email})
+    if(!existingUser) {
+      return res.status(404).json({ error: "Không tồn tại người dùng!!!" })
     }
 
-    const isMatchPassword = await bcryptjs.compare(password, existingUser.password);
-    if (!isMatchPassword) {
-      return res.status(401).json({ error: "Sai mật khẩu" });
+    const isMatchPassword = await bcryptjs.compare(password, existingUser.password)
+
+    if(!isMatchPassword) {
+      return res.status(401).json({ error: "Sai mật khẩu" })
     }
 
     const userpayload = {
       id: existingUser._id,
       phoneNumber: existingUser.phoneNumber
-    };
+    }
 
     const accessToken = await generateAccessToken(userpayload);
     const refreshToken = await generateRefreshToken(userpayload);
+
+     // Lưu refreshToken vào cookie
+    //  res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: false, // ở deverlopment thì dùng false, product thì dùng true
+    //   path: "/", // Toàn bộ ứng dụng được sử dụng cooki này
+    //   sameSite: "strict", // bảo mật
+    // });
 
     res.status(200).json({
       message: "Login successfully",
@@ -191,13 +194,12 @@ const login = async (req, res) => {
         user: existingUser,
         accessToken
       }
-    });
+    })
   } catch (error) {
-    console.error("Lỗi khi login:", error);
-    res.status(500).json({ message: "Lỗi server. Vui lòng thử lại sau!" });
+    console.error(error);
+    res.status(500).json({ message: 'Lỗi server. Vui lòng thử lại sau!' });
   }
-};
-
+}
 
 const logout = async (req, res) => {
   try {
@@ -313,6 +315,9 @@ const updateImageCover = async (req, res) => {
   try {
 
     const imageURL = req.files?.coverImage?.[0]
+
+    console.log("kbik: ", req.body);
+    
     
     const coverimage = await uploadFile(imageURL)
     const email = req.body.email
@@ -391,6 +396,20 @@ const updateProfile = async (req, res) => {
   }
 }
 
+const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params
+    await userModel.deleteOne({_id: id})
+
+    res.status(200).json({
+      message: 'Xóa tài khoản thành công'
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+}
+
 
 
 
@@ -407,5 +426,6 @@ export const userController = {
   updatePassword,
   updateImageCover,
   updateAvatar,
-  updateProfile
+  updateProfile,
+  deleteUser
 }
