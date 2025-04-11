@@ -14,10 +14,11 @@ router.post("/verify", verification)
 router.post("/checkPhoneAndEmail", userController.checkUserExists)
 router.post("/checkEmail", userController.checkEmailExists)
 router.get("/users", userController.getAllUser)
-router.put("/forgotPassword", userController.forgotPassword)
+router.put("/forgotPasswrod", userController.forgotPassword)
 router.put("/updatePassword", userController.updatePassword)
 router.put("/updateImageCover", upload, userController.updateImageCover)
 router.put("/updateProfile", userController.updateProfile)
 router.put("/updateAvatar", upload, userController.updateAvatar)
+router.delete("/delete/:id", userController.deleteUser)
 
 export default router
