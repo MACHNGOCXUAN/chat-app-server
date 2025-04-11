@@ -330,7 +330,9 @@ const updateImageCover = async (req, res) => {
     await user.save()
     res.status(200).json({
       success: true,
+      coverimage: coverimage, 
       message: 'Cập nhật ảnh bìa thành công',
+      user: user
     });
   } catch (error) {
     console.error(error);
@@ -356,7 +358,9 @@ const updateAvatar = async (req, res) => {
     await user.save()
     res.status(200).json({
       success: true,
+      avatarURL: avatar,
       message: 'Cập nhật ảnh đại diện thành công',
+      user: user
     });
   } catch (error) {
     console.error(error);
@@ -410,6 +414,45 @@ const deleteUser = async (req, res) => {
   }
 }
 
+const searchUserByPhoneNumber = async (req, res) => {
+  // try {
+  //   const { phoneNumber } = req.query;
+  //   const currentUserId = req.req.user._id;
+
+  //   if (!phoneNumber) {
+  //     return res.status(400).json({ message: "Không có số điện thoại này" });
+  //   }
+
+  //   // Tìm người dùng theo số điện thoại
+  //   const user = await userModel.findOne({ phoneNumber });
+
+  //   if (!user) {
+  //     return res.status(404).json({ message: "Không tồn người dùng" });
+  //   }
+
+  //   // Kiểm tra xem người dùng tìm thấy có phải là bạn bè của current user không
+  //   let friendStatus = null;
+  //   const friendRelation = user.friends.find(f => f.friendId.equals(currentUserId));
+    
+  //   if (friendRelation) {
+  //     friendStatus = friendRelation.status;
+  //   }
+
+  //   const userData = {
+  //     _id: user._id,
+  //     username: user.username,
+  //     phoneNumber: user.phoneNumber,
+  //     avatarURL: user.avatarURL,
+  //     friendStatus: friendStatus
+  //   };
+
+  //   return res.status(200).json(userData);
+  // } catch (error) {
+  //   console.error("Search user error:", error);
+  //   return res.status(500).json({ message: "Internal server error" });
+  // }
+};
+
 
 
 
@@ -427,5 +470,6 @@ export const userController = {
   updateImageCover,
   updateAvatar,
   updateProfile,
-  deleteUser
+  deleteUser,
+  searchUserByPhoneNumber
 }

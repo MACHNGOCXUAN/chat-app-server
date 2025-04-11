@@ -20,5 +20,6 @@ router.put("/updateImageCover", upload, userController.updateImageCover)
 router.put("/updateProfile", userController.updateProfile)
 router.put("/updateAvatar", upload, userController.updateAvatar)
 router.delete("/delete/:id", userController.deleteUser)
+router.get("/searchUserByPhoneNumber", userController.searchUserByPhoneNumber)
 
 export default router
