@@ -109,7 +109,7 @@ const checkUserExists = async (req, res) => {
 
 const register = async (req, res) => {
 
-  const { username, phoneNumber, dateOfBirth, gender, password, email, avatarURL } = req.body
+  const { username, phoneNumber, dateOfBirth, gender, password, email, avatarURL  } = req.body
   console.log(req.body);
   
   try {
