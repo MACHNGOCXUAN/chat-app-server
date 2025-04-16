@@ -159,7 +159,6 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   const {email, password} = req.body
-  console.log(req.body);
   
   try {
     const existingUser = await userModel.findOne({email})
@@ -174,8 +173,8 @@ const login = async (req, res) => {
     }
 
     const userpayload = {
-      id: existingUser._id,
-      phoneNumber: existingUser.phoneNumber
+      _id: existingUser._id,
+      phoneNumber: existingUser.email
     }
 
     const accessToken = await generateAccessToken(userpayload);
@@ -415,44 +414,29 @@ const deleteUser = async (req, res) => {
   }
 }
 
-const searchUserByPhoneNumber = async (req, res) => {
-  // try {
-  //   const { phoneNumber } = req.query;
-  //   const currentUserId = req.req.user._id;
+const searchUserByPhone = async (req, res) => {
+  console.log(req.query);
+  
+  try {
+    const { phoneNumber } = req.query;
 
-  //   if (!phoneNumber) {
-  //     return res.status(400).json({ message: "Không có số điện thoại này" });
-  //   }
+    if (!phoneNumber) {
+      return res.status(400).json({ message: "Số điện thoại chưa đăng ký tài khoản" });
+    }
 
-  //   // Tìm người dùng theo số điện thoại
-  //   const user = await userModel.findOne({ phoneNumber });
+    const user = await userModel.findOne({ phoneNumber }).select("-password");
 
-  //   if (!user) {
-  //     return res.status(404).json({ message: "Không tồn người dùng" });
-  //   }
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng." });
+    }
 
-  //   // Kiểm tra xem người dùng tìm thấy có phải là bạn bè của current user không
-  //   let friendStatus = null;
-  //   const friendRelation = user.friends.find(f => f.friendId.equals(currentUserId));
-    
-  //   if (friendRelation) {
-  //     friendStatus = friendRelation.status;
-  //   }
-
-  //   const userData = {
-  //     _id: user._id,
-  //     username: user.username,
-  //     phoneNumber: user.phoneNumber,
-  //     avatarURL: user.avatarURL,
-  //     friendStatus: friendStatus
-  //   };
-
-  //   return res.status(200).json(userData);
-  // } catch (error) {
-  //   console.error("Search user error:", error);
-  //   return res.status(500).json({ message: "Internal server error" });
-  // }
+    return res.status(200).json(user);
+  } catch (error) {
+    console.error("Lỗi tìm kiếm người dùng:", error);
+    return res.status(500).json({ message: "Đã xảy ra lỗi server." });
+  }
 };
+
 
 
 
@@ -472,5 +456,5 @@ export const userController = {
   updateAvatar,
   updateProfile,
   deleteUser,
-  searchUserByPhoneNumber
+  searchUserByPhone
 }

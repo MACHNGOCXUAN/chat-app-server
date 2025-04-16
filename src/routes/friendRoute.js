@@ -4,7 +4,8 @@ import { friendController } from '../controllers/friendController.js'
 
 const router = express.Router()
 
-router.post("/request",verifyToken, friendController.addFriend)
-router.post("/accept", verifyToken, friendController.acceptFriend)
+router.post("/request", friendController.addFriend)
+router.post("/accept", friendController.acceptFriend)
+router.get("/friends", verifyToken, friendController.getFriendsByUser)
 
 export default router

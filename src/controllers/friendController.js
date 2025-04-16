@@ -21,10 +21,8 @@ const addFriend = async (req, res) => {
       return res.status(400).json({ message: 'Đã gửi lời mời kết bạn.' })
     }
 
-    sender.friends.push({ friendId: receiverId, status: 'pending' })
     receiver.friends.push({ friendId: senderId, status: 'pending' })
 
-    await sender.save();
     await receiver.save();
 
     global._io.to(receiverId).emit("friendRequestReceived", {
@@ -54,17 +52,13 @@ const acceptFriend = async (req, res) => {
     const senderId = sender._id.toString()
     const receiverId = receiver._id.toString()
 
-    sender.friends.forEach(f => {
-      if (f.friendId.toString() === receiverId && f.status === 'pending') {
-        f.status = 'accepted';
-      }
-    })
-
     receiver.friends.forEach(f => {
       if (f.friendId.toString() === senderId && f.status === 'pending') {
         f.status = 'accepted';
       }
     })
+
+    sender.friends.push({ friendId: receiverId, status: 'accepted' })
 
     await sender.save()
     await receiver.save() 
@@ -82,7 +76,55 @@ const acceptFriend = async (req, res) => {
   }
 }
 
+// Lấy danh sách bạn bè đã gửi và đã là bạn bè
+const getFriendsByUser = async (req, res) => {
+  const userId = req.user._id;
+
+  try {
+    const user = await userModel.findById(userId).populate({
+      path: "friends.friendId",
+      select: "username avatarURL phoneNumber email"
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Người dùng không tồn tại." });
+    }
+    const acceptedFriends = [];
+    const pendingRequests = [];
+
+    user.friends.forEach(friend => {
+      if (!friend.friendId) return;
+
+      const friendData = {
+        _id: friend.friendId._id,
+        username: friend.friendId.username,
+        avatarURL: friend.friendId.avatarURL,
+        phoneNumber: friend.friendId.phoneNumber,
+        email: friend.friendId.email
+      };
+
+      if (friend.status === "accepted") {
+        acceptedFriends.push(friendData);
+      } else if (friend.status === "pending") {
+        pendingRequests.push(friendData);
+      }
+    });
+
+    res.status(200).json({
+      acceptedFriends,
+      pendingRequests
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách bạn bè:", error);
+    res.status(500).json({ message: "Lỗi server. Vui lòng thử lại sau!" });
+  }
+};
+
+export default getFriendsByUser;
+
+
 export const friendController = {
   addFriend,
-  acceptFriend
+  acceptFriend,
+  getFriendsByUser
 }
