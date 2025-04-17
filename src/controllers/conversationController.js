@@ -38,7 +38,7 @@ const getAllConversationByUser = async (req, res) => {
     })
       .populate('members', 'username avatarURL')
       .populate('lastMessage')
-      .sort({ updatedAt: -1 });
+      .sort({ 'lastMessage.timestamp': -1 });
 
     res.status(200).json(conversations);
   } catch (error) {
@@ -52,6 +52,8 @@ const getAllConversation = async (req, res) => {
     const conversations = await conversationModel.find({
       members: userId
     })
+    .populate('members', 'username avatarURL')
+    .populate('lastMessage')
     .sort({ updatedAt: -1 }); // sắp xếp theo thời gian cập nhật gần nhất
 
     res.status(200).json({
