@@ -30,7 +30,7 @@ const addFriend = async (req, res) => {
       username: sender.username
     })
 
-    res.status(200).json({ message: 'Đã gửi lời mời kết bạn.' });
+    res.status(200).json({ success: true,message: 'Đã gửi lời mời kết bạn.' });
 
   } catch (error) {
     console.error(error);
@@ -40,41 +40,55 @@ const addFriend = async (req, res) => {
 
 
 const acceptFriend = async (req, res) => {
-  const { senderPhone, receiverPhone  } = req.body
+  const { senderPhone, receiverPhone } = req.body;
+  
   try {
-    const sender = await userModel.findOne({phoneNumber: senderPhone})
-    const receiver = await userModel.findOne({ phoneNumber: receiverPhone })
-
+    const [sender, receiver] = await Promise.all([
+      userModel.findOne({ phoneNumber: senderPhone }),
+      userModel.findOne({ phoneNumber: receiverPhone })
+    ]);
     if (!sender || !receiver) {
       return res.status(404).json({ message: 'Người dùng không tồn tại.' });
     }
+    const senderId = sender._id.toString();
+    const receiverId = receiver._id.toString();
+    const receiverFriendIndex = receiver.friends.findIndex(
+      f => f.friendId.toString() === senderId && f.status === 'pending'
+    );
+    if (receiverFriendIndex === -1) {
+      return res.status(400).json({ message: 'Không tìm thấy lời mời kết bạn.' })
+    }
+    receiver.friends[receiverFriendIndex].status = 'accepted';
+    await receiver.save()
 
-    const senderId = sender._id.toString()
-    const receiverId = receiver._id.toString()
+    const senderFriendIndex = sender.friends.findIndex(
+      f => f.friendId.toString() === receiverId
+    )
+    if (senderFriendIndex === -1) {
+      sender.friends.push({ friendId: receiverId, status: 'accepted' })
+      await sender.save()
+    } else {
+      sender.friends[senderFriendIndex].status = 'accepted'
+      await sender.save()
+    }
 
-    receiver.friends.forEach(f => {
-      if (f.friendId.toString() === senderId && f.status === 'pending') {
-        f.status = 'accepted';
-      }
-    })
-
-    sender.friends.push({ friendId: receiverId, status: 'accepted' })
-
-    await sender.save()
-    await receiver.save() 
-
+    // Gửi thông báo
     global._io.to(senderId).emit('friendRequestAccepted', {
       from: receiverId,
       username: receiver.username
-    })
+    });
 
-    res.status(200).json({ message: 'Đã chấp nhận kết bạn.' });
+    res.status(200).json({ success: true, message: 'Đã chấp nhận kết bạn.' });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Lỗi server. Vui lòng thử lại sau!' });
+    console.error('Error accepting friend request:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Lỗi server. Vui lòng thử lại sau!',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
-}
+};
 
 // Lấy danh sách bạn bè đã gửi và đã là bạn bè
 const getFriendsByUser = async (req, res) => {
@@ -119,8 +133,6 @@ const getFriendsByUser = async (req, res) => {
     res.status(500).json({ message: "Lỗi server. Vui lòng thử lại sau!" });
   }
 };
-
-export default getFriendsByUser;
 
 
 export const friendController = {

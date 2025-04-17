@@ -29,6 +29,11 @@ const socketServer = (io) => {
       socket.emit("joined_room", { conversationId: conversation._id });
     });
 
+    socket.on('joinUserRoom', (userId) => {
+      socket.join(userId);
+      console.log(`User ${userId} joined their room`);
+    });
+
     // socket.on('leave_conversation', (conversationId) => {
     //   socket.leave(conversationId);
     //   console.log(`User left conversation: ${conversationId}`);
@@ -88,6 +93,9 @@ const socketServer = (io) => {
         socket.emit('recall_error', { error: 'Không thể thu hổi tin nhắn' });
       }
     });
+
+    // viết giúp tôi chức nang chuyển tiếp tin nhắn
+    
 
     // socket.on('typing', (data) => {
     //   const { conversationId, userId } = data;

@@ -11,7 +11,7 @@ dotenv.config()
 const generateAccessToken  = async (user) => {
 
   const token = await jwt.sign(user, process.env.SECRET_KEY, {
-    expiresIn: "15m"
+    expiresIn: "1d"
   })
 
   return token
