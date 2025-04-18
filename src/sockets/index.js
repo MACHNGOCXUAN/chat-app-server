@@ -3,7 +3,7 @@ import userModel from "../models/userModel.js";
 import conversationModel from "../models/conversationModel.js";
 import messageModel from '../models/messageModel.js'
 import uploadFile from "../utils/file.service.js";
-
+import DeletedMessage from '../models/deleteMessageModel.js';
 
 const socketServer = (io) => {
   io.on('connection', (socket) => {
@@ -45,52 +45,55 @@ const socketServer = (io) => {
     // Gửi tin nhắn
     socket.on("sendMessage", async (data) => {
       try {
-        const { conversationId, senderId, content, messageType } = data;
-        let messageContent = content;
-        
-        if (messageType !== 'text') {
-          messageContent = await uploadFile(content.file);
-        }
-    
-        const newMessage = new messageModel({
-          conversationId,
-          senderId,
-          content: messageContent,
-          messageType,
-          is_last_message: true,
-        });
-    
-        const savedMessage = await newMessage.save();
-    
-        const updatedConversation = await conversationModel.findByIdAndUpdate(
-          conversationId,
-          {
-            lastMessage: savedMessage._id,
-            updatedAt: new Date(),
-          },
-          { 
-            new: true,
-            populate: [
-              { path: 'members', select: 'username avatarURL' },
-              { path: 'lastMessage' }
-            ]
-          }
-        );
-    
-        const messageWithSender = await messageModel.findById(savedMessage._id)
-          .populate('senderId', 'username avatarURL');
-    
-        socket.to(conversationId).emit('receive_message', messageWithSender);
-        socket.emit('message_sent', messageWithSender);
+          const { conversationId, senderId, content, messageType } = data;
+          let messageContent = content;
 
-        updatedConversation.members.forEach(member => {
-          io.to(member._id.toString()).emit('conversation_updated', updatedConversation);
-        });
+// Nếu kiểu là file, thì không upload lại nữa vì FE đã upload xong
+if (messageType !== 'text' && typeof content !== 'string') {
+  messageContent = await uploadFile(content); // chỉ upload nếu content là file
+}
+
+  
+          const newMessage = new messageModel({
+              conversationId,
+              senderId,
+              content: messageContent,
+              messageType,
+              is_last_message: true,
+          });
+  
+          const savedMessage = await newMessage.save();  // Lưu tin nhắn vào DB
+  
+          const updatedConversation = await conversationModel.findByIdAndUpdate(
+              conversationId,
+              {
+                  lastMessage: savedMessage._id,
+                  updatedAt: new Date(),
+              },
+              { 
+                  new: true,
+                  populate: [
+                      { path: 'members', select: 'username avatarURL' },
+                      { path: 'lastMessage' }
+                  ]
+              }
+          );
+  
+          const messageWithSender = await messageModel.findById(savedMessage._id)
+              .populate('senderId', 'username avatarURL');
+  
+          socket.to(conversationId).emit('receive_message', messageWithSender);
+          socket.emit('message_sent', messageWithSender);
+  
+          updatedConversation.members.forEach(member => {
+              io.to(member._id.toString()).emit('conversation_updated', updatedConversation);
+          });
       } catch (error) {
-        console.error('Error sending message:', error);
-        socket.emit('message_error', { error: 'Failed to send message' });
+          console.error('Error sending message:', error);
+          socket.emit('message_error', { error: 'Failed to send message' });
       }
-    });
+  });
+  
 
     // Thu hồi tin nhắn
     socket.on('recall_message', async (data) => {
@@ -109,8 +112,19 @@ const socketServer = (io) => {
         socket.emit('recall_error', { error: 'Không thể thu hổi tin nhắn' });
       }
     });
-
-    
+    // xóa tin nhắn cục bộ
+    socket.on('delete_message_local', async ({ messageId, userId }) => {
+      try {
+        const existed = await DeletedMessage.findOne({ messageId, userId });
+        if (!existed) {
+          await DeletedMessage.create({ messageId, userId });
+        }
+        socket.emit('message_deleted_local', { messageId });
+      } catch (error) {
+        console.error('Error deleting message locally:', error);
+        socket.emit('delete_local_error', { error: 'Xóa tin nhắn thất bại' });
+      }
+    });
 
     // socket.on('typing', (data) => {
     //   const { conversationId, userId } = data;
