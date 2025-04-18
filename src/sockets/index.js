@@ -44,12 +44,20 @@ const socketServer = (io) => {
     socket.on("sendMessage", async (data) => {
       try {
         const { conversationId, senderId, content, messageType } = data;
+        
         let messageContent = content;
         
-        if (messageType !== 'text') {
-          messageContent = await uploadFile(content.file);
+        console.log(messageContent);
+        
+        if (messageType == 'image') {
+          messageContent = content
+        } else if (messageType == 'emoji') {
+          messageContent = content.emojiCode;
         }
-    
+
+        console.log(messageContent);
+        
+          
         const newMessage = new messageModel({
           conversationId,
           senderId,

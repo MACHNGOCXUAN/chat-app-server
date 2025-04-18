@@ -1,4 +1,5 @@
 import messageModel from "../models/messageModel.js"
+import uploadFile from "../utils/file.service.js";
 
 // Lấy tất cả tin nhắn từ cuộc trò chuyện
 const getMessageConversation = async (req, res) => {
@@ -21,11 +22,21 @@ const getMessageConversation = async (req, res) => {
   }
 };
 
-// xóa tin nhắn
+const uploadImage = async (req, res) => {
+  try {
+    const imageURL = req.files?.avatarURL?.[0]
+    const avatar = await uploadFile(imageURL)
+    res.status(200).json({success: true, data: avatar})
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+}
 
 
 
 
 export const messageController = {
-  getMessageConversation
+  getMessageConversation,
+  uploadImage
 }
