@@ -47,11 +47,9 @@ const socketServer = (io) => {
       try {
           const { conversationId, senderId, content, messageType } = data;
           let messageContent = content;
-
-// Nếu kiểu là file, thì không upload lại nữa vì FE đã upload xong
-if (messageType !== 'text' && typeof content !== 'string') {
-  messageContent = await uploadFile(content); // chỉ upload nếu content là file
-}
+          if (messageType !== 'text' && typeof content !== 'string') {
+            messageContent = await uploadFile(content); // chỉ upload nếu content là file
+          }
 
   
           const newMessage = new messageModel({
@@ -88,6 +86,49 @@ if (messageType !== 'text' && typeof content !== 'string') {
           updatedConversation.members.forEach(member => {
               io.to(member._id.toString()).emit('conversation_updated', updatedConversation);
           });
+        const { conversationId, senderId, content, messageType } = data;
+        
+        let messageContent = content;
+        
+        if (messageType == 'image') {
+          messageContent = content
+        } else if (messageType == 'emoji') {
+          messageContent = content.emojiCode;
+        }
+        const newMessage = new messageModel({
+          conversationId,
+          senderId,
+          content: messageContent,
+          messageType,
+          is_last_message: true,
+        });
+
+        const savedMessage = await newMessage.save();
+
+        const updatedConversation = await conversationModel.findByIdAndUpdate(
+          conversationId,
+          {
+            lastMessage: savedMessage._id,
+            updatedAt: new Date(),
+          },
+          {
+            new: true,
+            populate: [
+              { path: 'members', select: 'username avatarURL' },
+              { path: 'lastMessage' }
+            ]
+          }
+        );
+
+        const messageWithSender = await messageModel.findById(savedMessage._id)
+          .populate('senderId', 'username avatarURL');
+
+        socket.to(conversationId).emit('receive_message', messageWithSender);
+        socket.emit('message_sent', messageWithSender);
+
+        updatedConversation.members.forEach(member => {
+          io.to(member._id.toString()).emit('conversation_updated', updatedConversation);
+        });
       } catch (error) {
           console.error('Error sending message:', error);
           socket.emit('message_error', { error: 'Failed to send message' });

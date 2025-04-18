@@ -7,5 +7,11 @@ router.get("/:conversationId", messageController.getMessageConversation);
 router.get('/filter/:conversationId', authHandler, messageController.getFilterMessageConversation);
 router.post('/delete-local/:messageId', authHandler, messageController.deleteMessageLocally);
 
+import upload from '../middleware/upload.js'
+
+const router = express.Router()
+
+router.get("/:conversationId", messageController.getMessageConversation)
+router.post("/uploadimage",upload, messageController.uploadImage)
 
 export default router
