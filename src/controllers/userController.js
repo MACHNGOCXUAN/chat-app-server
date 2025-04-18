@@ -11,7 +11,7 @@ dotenv.config()
 const generateAccessToken  = async (user) => {
 
   const token = await jwt.sign(user, process.env.SECRET_KEY, {
-    expiresIn: "15m"
+    expiresIn: "1d"
   })
 
   return token
@@ -179,8 +179,8 @@ const login = async (req, res) => {
     }
 
     const userpayload = {
-      id: existingUser._id,
-      phoneNumber: existingUser.phoneNumber
+      _id: existingUser._id,
+      phoneNumber: existingUser.email
     }
 
     const accessToken = await generateAccessToken(userpayload);
@@ -336,7 +336,9 @@ const updateImageCover = async (req, res) => {
     await user.save()
     res.status(200).json({
       success: true,
+      coverimage: coverimage, 
       message: 'Cập nhật ảnh bìa thành công',
+      user: user
     });
   } catch (error) {
     console.error(error);
@@ -362,7 +364,9 @@ const updateAvatar = async (req, res) => {
     await user.save()
     res.status(200).json({
       success: true,
+      avatarURL: avatar,
       message: 'Cập nhật ảnh đại diện thành công',
+      user: user
     });
   } catch (error) {
     console.error(error);
@@ -444,6 +448,41 @@ const deleteUser = async (req, res) => {
     res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
   }
 }
+const getUserById = async (req, res) => {
+  const { userId } = req.params;
+  try {
+      const user = await userModel.findById(userId); // Chắc chắn sử dụng userModel thay vì User
+      if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+      }
+      res.json(user); // Trả về thông tin người dùng
+  } catch (error) {
+      res.status(500).json({ message: 'Server error', error: error.message });
+  }
+}
+const searchUserByPhone = async (req, res) => {
+  console.log(req.query);
+  
+  try {
+    const { phoneNumber } = req.query;
+
+    if (!phoneNumber) {
+      return res.status(400).json({ message: "Số điện thoại chưa đăng ký tài khoản" });
+    }
+
+    const user = await userModel.findOne({ phoneNumber }).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng." });
+    }
+
+    return res.status(200).json(user);
+  } catch (error) {
+    console.error("Lỗi tìm kiếm người dùng:", error);
+    return res.status(500).json({ message: "Đã xảy ra lỗi server." });
+  }
+};
+
 
 
 
@@ -464,4 +503,6 @@ export const userController = {
   updateProfile,
   deleteUser,
   updateAvatarRealTime,
+  searchUserByPhone,
+  getUserById
 }

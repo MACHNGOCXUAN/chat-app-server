@@ -10,7 +10,7 @@ const friendSchema = new mongoose.Schema({
     type: String,
     enum: ["pending", "accepted", "blocked"],
     default: "pending"
-  }
+  },
 }, { _id: false})
 
 const userSchema = new mongoose.Schema({
