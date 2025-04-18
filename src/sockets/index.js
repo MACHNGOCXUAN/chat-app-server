@@ -11,7 +11,9 @@ const socketServer = (io) => {
 
     // Tham gia cuộc trò chuyện
     socket.on('join_conversation', async ({senderId, rereceiveId}) => {
-
+      console.log('join_conversation called with:');
+  console.log('senderId:', senderId);
+  console.log('rereceiveId:', rereceiveId);
       let conversation = await conversationModel.findOne({
         type: 'private',
         members: {
