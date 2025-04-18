@@ -19,6 +19,7 @@ router.put("/updatePassword", userController.updatePassword)
 router.put("/updateImageCover", upload, userController.updateImageCover)
 router.put("/updateProfile", userController.updateProfile)
 router.put("/updateAvatar", upload, userController.updateAvatar)
+router.put('/updateAvatarRealTime', upload, userController.updateAvatarRealTime);
 router.delete("/delete/:id", userController.deleteUser)
 router.get("/searchphone", userController.searchUserByPhone)
 

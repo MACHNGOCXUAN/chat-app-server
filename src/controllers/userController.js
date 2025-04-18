@@ -158,10 +158,16 @@ const register = async (req, res) => {
 
 
 const login = async (req, res) => {
-  const {email, password} = req.body
+  const { email, phoneNumber, password } = req.body;
+  console.log(req.body);
   
   try {
-    const existingUser = await userModel.findOne({email})
+    const existingUser = await userModel.findOne({
+      $or: [
+        { email: email },
+        { phoneNumber: phoneNumber }
+      ]
+    });
     if(!existingUser) {
       return res.status(404).json({ error: "Không tồn tại người dùng!!!" })
     }
@@ -367,6 +373,35 @@ const updateAvatar = async (req, res) => {
     res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
   }
 }
+const updateAvatarRealTime = async (req, res) => {
+  try {
+    const imageURL = req.files?.avatarURL?.[0]; // lấy file từ req.files
+    if (!imageURL) {
+      return res.status(400).json({ error: 'Không có file được upload!' });
+    }
+
+    const avatar = await uploadFile(imageURL); // upload và lấy đường dẫn
+    const email = req.body.email;
+
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: 'Người dùng không tồn tại!!!' });
+    }
+
+    user.avatarURL = avatar;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật ảnh đại diện thành công',
+      avatarURL: avatar, // ✅ TRẢ VỀ ẢNH MỚI
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+};
 
 const updateProfile = async (req, res) => {
   try {
@@ -456,5 +491,7 @@ export const userController = {
   updateAvatar,
   updateProfile,
   deleteUser,
+  updateAvatarRealTime,
   searchUserByPhone
+
 }
