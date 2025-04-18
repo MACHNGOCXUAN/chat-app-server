@@ -4,6 +4,9 @@ import verifyToken from '../middleware/verifyMiddleware.js'
 
 const router = express.Router()
 
-router.get("/conversation", verifyToken, conversationContrller.getAllConversation)
+router.get("/conversation", verifyToken, conversationContrller.getAllConversation);
+
+router.post("/conversation", verifyToken, conversationContrller.createConversation);
+
 
 export default router

@@ -73,10 +73,19 @@ const acceptFriend = async (req, res) => {
     }
 
     // Gửi thông báo
-    global._io.to(senderId).emit('friendRequestAccepted', {
-      from: receiverId,
-      username: receiver.username
-    });
+    // Gửi thông báo realtime cho cả hai
+global._io.to(senderId).emit('friend_request_accepted', {
+  friendId: receiverId,
+  username: receiver.username,
+  avatarURL: receiver.avatarURL
+});
+
+global._io.to(receiverId).emit('friend_request_accepted', {
+  friendId: senderId,
+  username: sender.username,
+  avatarURL: sender.avatarURL
+});
+
 
     res.status(200).json({ success: true, message: 'Đã chấp nhận kết bạn.' });
 
