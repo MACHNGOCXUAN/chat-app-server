@@ -448,7 +448,18 @@ const deleteUser = async (req, res) => {
     res.status(500).json({ error: 'Lỗi server. Vui lòng thử lại sau!' });
   }
 }
-
+const getUserById = async (req, res) => {
+  const { userId } = req.params;
+  try {
+      const user = await userModel.findById(userId); // Chắc chắn sử dụng userModel thay vì User
+      if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+      }
+      res.json(user); // Trả về thông tin người dùng
+  } catch (error) {
+      res.status(500).json({ message: 'Server error', error: error.message });
+  }
+}
 const searchUserByPhone = async (req, res) => {
   console.log(req.query);
   
@@ -492,6 +503,6 @@ export const userController = {
   updateProfile,
   deleteUser,
   updateAvatarRealTime,
-  searchUserByPhone
-
+  searchUserByPhone,
+  getUserById
 }
