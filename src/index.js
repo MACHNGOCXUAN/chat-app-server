@@ -7,6 +7,9 @@ import cookieParser from 'cookie-parser'
 import { Server } from "socket.io"
 import friendRoute from './routes/friendRoute.js'
 import http from 'http'
+import socketServer from './sockets/index.js';
+import conversationRoute from './routes/conversationRoute.js'
+import messageRoute from "./routes/messageRoute.js"
 dotenv.config();
 
 const app = express();
@@ -37,15 +40,10 @@ app.use(cookieParser());
 
 app.use("/api/auth", userRoute)
 app.use("/api/friend", friendRoute)
-app
+app.use("/api/conversation", conversationRoute)
+app.use("/api/message", messageRoute)
 
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-
-  socket.on('register', (userId) => {
-    socket.join(userId);
-  });
-});
+socketServer(io)
 
 connectDB()
   .then(() => {
@@ -53,7 +51,7 @@ connectDB()
     //   console.log(`Server is running on http://${HOST}:${PORT}`)
     // })
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`Server is running on http://${HOST}:${PORT}`)
     })
   })
