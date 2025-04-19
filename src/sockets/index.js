@@ -28,6 +28,8 @@ const socketServer = (io) => {
           members: [senderId, rereceiveId]
         });
       }
+      console.log("conversation: ", conversation);
+      
 
       socket.join(conversation._id.toString());
       socket.emit("joined_room", { conversationId: conversation._id });
@@ -42,7 +44,30 @@ const socketServer = (io) => {
     // Gửi tin nhắn
     socket.on("sendMessage", async (data) => {
       try {
-        const { conversationId, senderId, content, messageType } = data;
+        const { senderId, rereceiveId, content, messageType } = data;
+        let { conversationId } = data;
+
+        if (!conversationId) {
+          let conversation = await conversationModel.findOne({
+            type: 'private',
+            members: {
+              $all: [senderId, rereceiveId],
+              $size: 2
+            }
+          });
+    
+          if (!conversation) {
+            conversation = await conversationModel.create({
+              name: `${senderId} - ${rereceiveId}`,
+              members: [senderId, rereceiveId],
+              type: 'private'
+            });
+          }
+          conversationId = conversation._id.toString();
+          
+          // Thông báo cho client về conversationId mới
+          socket.emit('conversation_created', { conversationId });
+        }
         
         let messageContent = content;
         
@@ -80,6 +105,7 @@ const socketServer = (io) => {
           .populate('senderId', 'username avatarURL');
 
         socket.to(conversationId).emit('receive_message', messageWithSender);
+        socket.to(rereceiveId).emit('receive_message', messageWithSender);
         socket.emit('message_sent', messageWithSender);
 
         updatedConversation.members.forEach(member => {
