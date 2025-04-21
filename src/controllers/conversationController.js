@@ -50,9 +50,9 @@ const getAllConversation = async (req, res) => {
   try {
     const userId = req.user._id;
     const conversations = await conversationModel.find({
-      members: userId
+      "members.userId": userId
     })
-    .populate('members', 'username avatarURL')
+    .populate('members.userId', 'username avatarURL')
     .populate('lastMessage')
     .sort({ updatedAt: -1 }); // sắp xếp theo thời gian cập nhật gần nhất
 

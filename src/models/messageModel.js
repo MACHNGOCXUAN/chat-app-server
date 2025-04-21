@@ -16,7 +16,7 @@ const messageSchema = new mongoose.Schema({
     required: true,
   },
   content: {
-    type: String,
+    type: mongoose.Schema.Types.Mixed,
     required: true,
   },
   timestamp: {
@@ -36,7 +36,11 @@ const messageSchema = new mongoose.Schema({
   },
   preMessage: {
     type: String
-  }
+  },
+  deletedFor: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
+  }]
 }, {
   timestamps: true
 })

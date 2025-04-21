@@ -17,7 +17,8 @@ const upload = multer({
   },
 }).fields([
   { name: "avatarURL", maxCount: 1 },
-  { name: "coverImage", maxCount: 1 }
+  { name: "coverImage", maxCount: 1 },
+  {name: "ArrayFile", maxCount: 10}
 ]);
 
 export default upload
