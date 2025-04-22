@@ -45,8 +45,8 @@ const acceptFriend = async (req, res) => {
 
   try {
     const [sender, receiver] = await Promise.all([
-      userModel.findOne({ phoneNumber: senderPhone }).session(session),
-      userModel.findOne({ phoneNumber: receiverPhone }).session(session),
+      userModel.findOne({ phoneNumber: senderPhone }),
+      userModel.findOne({ phoneNumber: receiverPhone }),
     ]);
 
     if (!sender || !receiver) {
@@ -63,8 +63,6 @@ const acceptFriend = async (req, res) => {
     );
 
     if (receiverFriendIndex === -1) {
-      await session.abortTransaction();
-      session.endSession();
       return res.status(400).json({ message: "Không tìm thấy lời mời kết bạn." });
     }
 
@@ -73,17 +71,15 @@ const acceptFriend = async (req, res) => {
     );
 
     if (alreadyFriends) {
-      await session.abortTransaction();
-      session.endSession();
       return res.status(400).json({ message: "Đã là bạn bè từ trước." });
     }
 
     receiver.friends[receiverFriendIndex].status = "accepted";
-    await receiver.save({ session });
+    await receiver.save();
 
     // Thêm bạn bè vào sender
     sender.friends.push({ friendId: receiverId, status: "accepted" });
-    await sender.save({ session });
+    await sender.save();
 
     // Tạo conversation
     const newConversation = {
@@ -116,8 +112,6 @@ const acceptFriend = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Đã chấp nhận kết bạn." });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     console.error("Error accepting friend request:", error);
     res.status(500).json({
       success: false,

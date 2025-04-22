@@ -10,35 +10,59 @@ const socketServer = (io) => {
   io.on("connection", (socket) => {
     console.log("New client connected:", socket.id);
 
-    // =================== Tham gia cuộc trò chuyện ======================
-    socket.on("join_conversation", async ({ senderId, rereceiveId }) => {
-      try {
-        let conversation = await conversationModel.findOne({
-          type: "private",
-          members: {
-            $all: [
-              { $elemMatch: { userId: senderId } },
-              { $elemMatch: { userId: rereceiveId } },
-            ],
-            $size: 2,
-          },
-        });
 
-        if (!conversation) {
-          return socket.emit("error", {
-            message: "Cuộc trò chuyện không tồn tại",
+    // Xử lý join conversation 1-1 và nhóm
+    socket.on("join_conversation",async ({ senderId, receiveId, conversationId }) => {
+        try {
+          let conversation;
+
+          if (conversationId) {
+            conversation = await conversationModel.findById(conversationId);
+          }
+          else {
+            conversation = await conversationModel.findOne({
+              type: "private",
+              members: {
+                $all: [
+                  { $elemMatch: { userId: senderId } },
+                  { $elemMatch: { userId: receiveId } },
+                ],
+                $size: 2,
+              },
+            });
+          }
+
+          socket.join(conversation._id.toString());
+          socket.emit("joined_room", {
+            conversationId: conversation._id.toString(),
           });
+        } catch (error) {
+          console.error("Join conversation error:", error);
         }
+      }
+    );
 
-        socket.join(conversation._id.toString());
-        console.log(`User ${senderId} joined conversation ${conversation._id}`);
-        socket.emit("joined_room", { conversationId: conversation._id });
+    // Xử lý join conversation nhóm
+    socket.on("join_group_conversation", async ({ conversationId, userId }) => {
+      try {
+        const conversation = await conversationModel.findById(conversationId);
+        if (!conversation) return;
+
+        // Kiểm tra user có trong nhóm không
+        const isMember = conversation.members.some(
+          (m) => m.userId.toString() === userId
+        );
+        if (!isMember) return;
+
+        // Join room
+        socket.join(conversationId);
+        socket.emit("joined_room", { conversationId });
       } catch (error) {
-        console.error("Error joining conversation:", error);
-        socket.emit("error", { message: "Error joining conversation" });
+        console.error("Join group conversation error:", error);
       }
     });
 
+    // Mỗi khi người dùng kết nối, join vào room của họ
     socket.on("joinUserRoom", (userId) => {
       socket.join(userId);
       console.log(`User ${userId} joined their room`);
@@ -62,44 +86,51 @@ const socketServer = (io) => {
     };
 
     // =================== Tạo nhóm ======================
-    socket.on("create_group", async ({ creatorId, name, imageGroup, members }) => {
-      try {
+    socket.on(
+      "create_group",
+      async ({ creatorId, name, imageGroup, members }) => {
+        try {
+          console.log("zian: ", name);
 
-        console.log("zian: ", name);
-        
+          if (!imageGroup) {
+            imageGroup =
+              "https://img.freepik.com/free-vector/group-therapy-concept_23-2148655388.jpg?semt=ais_hybrid&w=740";
+          }
 
-        if(!imageGroup) {
-          imageGroup = "https://img.freepik.com/free-vector/group-therapy-concept_23-2148655388.jpg?semt=ais_hybrid&w=740"
+          const newConversation = {
+            name,
+            type: "group",
+            imageGroup,
+            members: [
+              { userId: creatorId, role: "admin" },
+              ...members.map((userId) => ({
+                userId,
+                role: "member",
+              })),
+            ],
+          };
+          const conversation = await conversationModel.create(newConversation);
+
+          console.log("conversation: ", conversation);
+
+          conversation.members.forEach((member) => {
+            io.to(member.userId._id.toString()).emit(
+              "group_created",
+              conversation
+            );
+          });
+        } catch (error) {
+          console.error("Không thể tạo nhóm:", error);
+          socket.emit("error", { message: "Không thể tạo nhóm" });
         }
-
-        const newConversation = {
-          name,
-          type: "group",
-          imageGroup,
-          members: [
-            { userId: creatorId, role: "admin" },
-            ...members.map((userId) => ({
-              userId,
-              role: "member",
-            })),
-          ],
-        };
-        const conversation = await conversationModel.create(newConversation);
-        conversation.members.forEach((member) => {
-          io.to(member.userId.toString()).emit("group_created", conversation);
-        });
-      } catch (error) {
-        console.error("Không thể tạo nhóm:", error);
-        socket.emit("error", { message: "Không thể tạo nhóm" });
       }
-    });
+    );
 
     // ======================== Gửi tin nhắn ============================
     socket.on("sendMessage", async (data) => {
       try {
-        
         console.log("Data: ", data);
-        
+
         const { senderId, rereceiveId, content, messageType } = data;
         let { conversationId } = data;
 
@@ -170,16 +201,15 @@ const socketServer = (io) => {
           .populate("senderId", "username avatarURL");
 
         console.log("jjkjnk: ", messageContent);
-        
 
         io.to(conversationId).emit("new_message", {
           ...savedMessage.toObject(),
           senderId: messageWithSender.senderId,
         });
-        
+
         socket.to(conversationId).emit("receive_message", messageWithSender);
         socket.emit("message_sent", messageWithSender);
-        
+
         updatedConversation.members.forEach((member) => {
           io.to(member.userId?._id.toString()).emit(
             "conversation_updated",
@@ -398,8 +428,8 @@ const socketServer = (io) => {
 
     socket.on("disconnect", (reason) => {
       console.log("Client disconnected:", socket.id);
-      if (reason === 'transport close') {
-        console.log('Đang chờ kết nối lại...');
+      if (reason === "transport close") {
+        console.log("Đang chờ kết nối lại...");
       }
     });
   });
