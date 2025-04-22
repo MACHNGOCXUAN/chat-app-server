@@ -72,6 +72,10 @@ const getAllConversation = async (req, res) => {
   }
 };
 
+const getGroupJoin = async (req, res) =>{
+  
+}
+
 
 export const conversationContrller = {
   createConversation,

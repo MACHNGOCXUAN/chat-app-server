@@ -11,15 +11,14 @@ const socketServer = (io) => {
     console.log("New client connected:", socket.id);
 
     // =================== Tham gia cuộc trò chuyện ======================
-    socket.on("join_conversation", async ({senderId, rereceiveId}) => {
+    socket.on("join_conversation", async ({ senderId, rereceiveId }) => {
       try {
-        
         let conversation = await conversationModel.findOne({
           type: "private",
           members: {
             $all: [
               { $elemMatch: { userId: senderId } },
-              { $elemMatch: { userId: rereceiveId } }
+              { $elemMatch: { userId: rereceiveId } },
             ],
             $size: 2,
           },
@@ -32,7 +31,7 @@ const socketServer = (io) => {
         }
 
         socket.join(conversation._id.toString());
-        console.log(`User ${userId} joined conversation ${conversation._id}`);
+        console.log(`User ${senderId} joined conversation ${conversation._id}`);
         socket.emit("joined_room", { conversationId: conversation._id });
       } catch (error) {
         console.error("Error joining conversation:", error);
@@ -63,11 +62,20 @@ const socketServer = (io) => {
     };
 
     // =================== Tạo nhóm ======================
-    socket.on("create_group", async ({ creatorId, name, members }) => {
+    socket.on("create_group", async ({ creatorId, name, imageGroup, members }) => {
       try {
+
+        console.log("zian: ", name);
+        
+
+        if(!imageGroup) {
+          imageGroup = "https://img.freepik.com/free-vector/group-therapy-concept_23-2148655388.jpg?semt=ais_hybrid&w=740"
+        }
+
         const newConversation = {
           name,
           type: "group",
+          imageGroup,
           members: [
             { userId: creatorId, role: "admin" },
             ...members.map((userId) => ({
@@ -89,11 +97,13 @@ const socketServer = (io) => {
     // ======================== Gửi tin nhắn ============================
     socket.on("sendMessage", async (data) => {
       try {
+        
+        console.log("Data: ", data);
+        
         const { senderId, rereceiveId, content, messageType } = data;
         let { conversationId } = data;
 
         console.log("data: ", data);
-        
 
         if (!conversationId) {
           let conversation = await conversationModel.findOne({
@@ -101,7 +111,7 @@ const socketServer = (io) => {
             members: {
               $all: [
                 { $elemMatch: { userId: senderId } },
-                { $elemMatch: { userId: rereceiveId } }
+                { $elemMatch: { userId: rereceiveId } },
               ],
               $size: 2,
             },
@@ -159,11 +169,19 @@ const socketServer = (io) => {
           .findById(savedMessage._id)
           .populate("senderId", "username avatarURL");
 
+        console.log("jjkjnk: ", messageContent);
+        
+
+        io.to(conversationId).emit("new_message", {
+          ...savedMessage.toObject(),
+          senderId: messageWithSender.senderId,
+        });
+        
         socket.to(conversationId).emit("receive_message", messageWithSender);
         socket.emit("message_sent", messageWithSender);
-
+        
         updatedConversation.members.forEach((member) => {
-          io.to(member.userId.toString()).emit(
+          io.to(member.userId?._id.toString()).emit(
             "conversation_updated",
             updatedConversation
           );
@@ -378,8 +396,11 @@ const socketServer = (io) => {
       }
     );
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", (reason) => {
       console.log("Client disconnected:", socket.id);
+      if (reason === 'transport close') {
+        console.log('Đang chờ kết nối lại...');
+      }
     });
   });
 };

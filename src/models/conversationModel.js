@@ -55,6 +55,10 @@ const conversationSchema = new mongoose.Schema({
       enum: ["all", "admin"],
       default: "all"
     }
+  },
+  imageGroup: {
+    type: String,
+    required: true
   }
 }, {
   timestamps: true
