@@ -73,12 +73,33 @@ const getAllConversation = async (req, res) => {
 };
 
 const getGroupJoin = async (req, res) =>{
-  
+  try {
+    const userId = req.user._id
+    const conversations = await conversationModel.find({
+      "members.userId": userId, type: 'group'
+    })
+    .populate('members.userId', 'username avatarURL')
+    .populate('lastMessage')
+    .sort({ updatedAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: conversations
+    })
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách cuộc trò chuyện:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi máy chủ. Không thể lấy cuộc trò chuyện.",
+      error: error.message
+    });
+  }
 }
 
 
 export const conversationContrller = {
   createConversation,
   getAllConversationByUser,
-  getAllConversation
+  getAllConversation,
+  getGroupJoin
 }

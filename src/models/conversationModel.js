@@ -58,7 +58,7 @@ const conversationSchema = new mongoose.Schema({
   },
   imageGroup: {
     type: String,
-    required: true
+    default: "https://img.freepik.com/free-vector/group-therapy-concept_23-2148655388.jpg?semt=ais_hybrid&w=740"
   }
 }, {
   timestamps: true

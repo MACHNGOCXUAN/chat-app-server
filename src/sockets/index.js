@@ -111,10 +111,10 @@ const socketServer = (io) => {
           };
           const conversation = await conversationModel.create(newConversation);
 
-          console.log("conversation: ", conversation);
 
           conversation.members.forEach((member) => {
-            io.to(member.userId._id.toString()).emit(
+            
+            io.to(member.userId.toString()).emit(
               "group_created",
               conversation
             );
