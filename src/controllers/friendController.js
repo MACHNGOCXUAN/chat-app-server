@@ -88,9 +88,9 @@ const acceptFriend = async (req, res) => {
         { userId: sender._id, role: "member" },
         { userId: receiver._id, role: "member" }
       ],
-      type: 'private'
+      type: 'private',
+      imageGroup: 'default_private_image_url' // Tui thêm này vô nè
     };
-
     const conversation = await conversationModel.create(newConversation);
 
     const emitData = {
