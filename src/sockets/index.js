@@ -267,13 +267,13 @@ const socketServer = (io) => {
     socket.on("addMemberConversation", async ({ conversationId, members }) => {
       try {
         const newMembers = await members.map((member) => ({
-          userId,
+          userId: member,
           role: "member",
         }));
 
         const updateConversation = await conversationModel
           .findOneAndUpdate(
-            conversationId,
+            {_id: conversationId},
             { $push: { members: { $each: newMembers } } },
             { new: true }
           )
@@ -286,7 +286,7 @@ const socketServer = (io) => {
           );
         });
         members.forEach((userId) => {
-          io.to(userId.toString()).emit("added_to_group", updatedConversation);
+          io.to(userId.toString()).emit("added_to_group", updateConversation);
         });
 
         // members.forEach(userId => {

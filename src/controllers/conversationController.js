@@ -97,6 +97,72 @@ const getGroupJoin = async (req, res) =>{
 }
 
 
+const updatePermission = async (req, res) => {
+  try {
+    const {setting, permission, conversationId} = req.body
+    const userId = req.user._id
+    
+    const conversation = await conversationModel.findById(conversationId)
+    if(!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tồn tại cuộc trò chuyện"
+      })
+    }
+
+    const isAdmin = conversation.members.some(
+      member => member.userId.toString() === userId.toString() && member.role === 'admin'
+    );
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Chỉ quản trị viên mới có thể thay đổi cài đặt nhóm"
+      });
+    }
+
+    const validSettings = ['joinPermission', 'messagePermission'];
+    if (!validSettings.includes(setting)) {
+      return res.status(400).json({
+        success: false,
+        message: "Cài đặt không hợp lệ"
+      });
+    }
+
+    const validPermissions = conversation.schema.path(`settings.${setting}`).enumValues;
+    if (!validPermissions.includes(permission)) {
+      return res.status(400).json({
+        success: false,
+        message: "Quyền không hợp lệ"
+      });
+    }
+
+    conversation.settings[setting] = permission;
+    conversation.lastUpdateAt = Date.now();
+
+    socket.emit('group_settings_updated', {
+      conversationId: conversation._id,
+      setting,
+      permission,
+      updatedBy: userId
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật quyền thành công",
+      conversation: updatedConversation
+    });
+  } catch (error) {
+    console.error("Lỗi khi cập nhật quyền:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server khi cập nhật quyền",
+      error: error.message
+    });
+  }
+}
+
+
 export const conversationContrller = {
   createConversation,
   getAllConversationByUser,
