@@ -10,16 +10,16 @@ const socketServer = (io) => {
   io.on("connection", (socket) => {
     console.log("New client connected:", socket.id);
 
-
     // Xử lý join conversation 1-1 và nhóm
-    socket.on("join_conversation",async ({ senderId, receiveId, conversationId }) => {
+    socket.on(
+      "join_conversation",
+      async ({ senderId, receiveId, conversationId }) => {
         try {
           let conversation;
 
           if (conversationId) {
             conversation = await conversationModel.findById(conversationId);
-          }
-          else {
+          } else {
             conversation = await conversationModel.findOne({
               type: "private",
               members: {
@@ -111,13 +111,8 @@ const socketServer = (io) => {
           };
           const conversation = await conversationModel.create(newConversation);
 
-
           conversation.members.forEach((member) => {
-            
-            io.to(member.userId.toString()).emit(
-              "group_created",
-              conversation
-            );
+            io.to(member.userId.toString()).emit("group_created", conversation);
           });
         } catch (error) {
           console.error("Không thể tạo nhóm:", error);
@@ -421,6 +416,159 @@ const socketServer = (io) => {
           console.error("Lỗi khi cập nhật quyền thành viên:", error);
           socket.emit("error", {
             message: "Lỗi khi cập nhật quyền thành viên",
+          });
+        }
+      }
+    );
+
+    // ==================== Chuyển tiếp tin nhắn ====================
+    socket.on(
+      "forward_message",
+      async ({ originalMessage, targetConversations, senderId }) => {
+        if (
+          !originalMessage ||
+          !targetConversations ||
+          !targetConversations.length
+        ) {
+          return socket.emit("forward_error", {
+            message: "Dữ liệu không hợp lệ",
+          });
+        }
+
+        const sender = await userModel.findById(senderId);
+        if (!sender) {
+          return socket.emit("forward_error", {
+            message: "Người gửi không tồn tại",
+          });
+        }
+
+        // Gửi đến từng conversation đích
+        const results = await Promise.all(
+          targetConversations.map(async (target) => {
+            try {
+              let conversation;
+
+              // Nếu là chuyển tiếp đến nhóm
+              if (target.type === "group") {
+                conversation = await conversationModel.findById(target._id);
+                if (!conversation) {
+                  return {
+                    success: false,
+                    conversationId: target._id,
+                    error: "Nhóm không tồn tại",
+                  };
+                }
+
+                // Kiểm tra người gửi có trong nhóm không
+                const isMember = conversation.members.some((m) =>
+                  m.userId.equals(senderId)
+                );
+                if (!isMember) {
+                  return {
+                    success: false,
+                    conversationId: target._id,
+                    error: "Bạn không phải thành viên nhóm",
+                  };
+                }
+              }
+              // Nếu là chuyển tiếp đến cá nhân
+              else {
+                // Tìm hoặc tạo conversation với người nhận
+                const receiverId = target._id;
+                conversation = await conversationModel.findOne({
+                  type: "private",
+                  members: {
+                    $all: [
+                      { $elemMatch: { userId: senderId } },
+                      { $elemMatch: { userId: receiverId } },
+                    ],
+                    $size: 2,
+                  },
+                });
+              }
+
+              // Tạo tin nhắn chuyển tiếp
+              const newMessage = new messageModel({
+                conversationId: conversation._id,
+                senderId,
+                content: originalMessage.content,
+                messageType: originalMessage.messageType,
+                is_last_message: true,
+              });
+
+              const savedMessage = await newMessage.save();
+
+              // Cập nhật lastMessage của conversation
+              const updatedConversation =
+                await conversationModel.findByIdAndUpdate(
+                  conversation._id,
+                  {
+                    lastMessage: savedMessage._id,
+                    updatedAt: new Date(),
+                  },
+                  {
+                    new: true,
+                    populate: [
+                      {
+                        path: "members.userId",
+                        select: "username avatarURL",
+                      },
+                      { path: "lastMessage" },
+                    ],
+                  }
+                );
+
+              // Populate thông tin người gửi
+              const messageWithSender = await messageModel
+                .findById(savedMessage._id)
+                .populate("senderId", "username avatarURL");
+
+                console.log("nkjnkj: ", messageWithSender);
+                
+
+                io.to(conversation?._id).emit("new_message", {
+                  ...savedMessage.toObject(),
+                  senderId: messageWithSender.senderId,
+                });
+        
+                socket.to(conversation?._id).emit("receive_message", messageWithSender);
+                socket.emit("message_sent", messageWithSender);
+
+              conversation.members.forEach((member) => {
+                io.to(member.userId.toString()).emit("forwardConversation", conversation);
+              });
+
+              // Cập nhật danh sách conversation cho các thành viên
+              updatedConversation.members.forEach((member) => {
+                io.to(member?.userId.toString()).emit(
+                  "conversation_updated",
+                  updatedConversation
+                );
+              });
+
+              return { success: true, conversationId: conversation._id };
+            } catch (error) {
+              console.error("Lỗi trong quá trình chuyển tiếp:", error);
+              return {
+                success: false,
+                conversationId: target._id,
+                error: error.message,
+              };
+            }
+          })
+        );
+
+        // Xử lý kết quả tổng hợp sau khi chuyển tiếp
+        const failedConversations = results.filter((r) => !r.success);
+
+        if (failedConversations.length === 0) {
+          socket.emit("forward_success", {
+            message: "Chuyển tiếp thành công",
+          });
+        } else if (failedConversations.length > 0) {
+          socket.emit("forward_partial_error", {
+            message: "Một số tin nhắn chuyển tiếp không thành công",
+            errors: failedConversations,
           });
         }
       }
