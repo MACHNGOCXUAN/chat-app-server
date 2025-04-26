@@ -140,7 +140,9 @@ const updatePermission = async (req, res) => {
     conversation.settings[setting] = permission;
     conversation.lastUpdateAt = Date.now();
 
-    socket.emit('group_settings_updated', {
+    const updatedConversation = await conversation.save();
+
+    global._io.emit('group_settings_updated', {
       conversationId: conversation._id,
       setting,
       permission,
@@ -162,10 +164,33 @@ const updatePermission = async (req, res) => {
   }
 }
 
+const conversationbyid = async (req, res) => {
+  const id = req.params.id
+  try {
+    const conversation = await conversationModel.findById(id)
+    if(!conversation) {
+      return res.status(404).json("Khong ton tai converstion")
+    }
+
+    res.status(200).json({
+      success: true,
+      data: conversation
+    })
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server khi cập nhật quyền",
+      error: error.message
+    });
+  }
+}
+
 
 export const conversationContrller = {
   createConversation,
   getAllConversationByUser,
   getAllConversation,
-  getGroupJoin
+  getGroupJoin,
+  updatePermission,
+  conversationbyid
 }

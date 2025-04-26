@@ -8,6 +8,8 @@ router.get("/conversation", verifyToken, conversationContrller.getAllConversatio
 
 router.post("/conversation", verifyToken, conversationContrller.createConversation);
 router.get("/groupJoin", verifyToken, conversationContrller.getGroupJoin)
+router.put("/updatePermission", verifyToken, conversationContrller.updatePermission)
+router.get("/conversationbyid/:id", conversationContrller.conversationbyid)
 
 
 export default router
