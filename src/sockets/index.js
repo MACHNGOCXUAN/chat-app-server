@@ -574,6 +574,53 @@ const socketServer = (io) => {
       }
     );
 
+    async function transferAdminRole(conversationId, currentAdminId, newAdminId) {
+      const conversation = await conversationModel.findById(conversationId);
+      if (!conversation) throw new Error('Conversation not found');
+      if (conversation.type !== 'group') throw new Error('Only group chats can have admin transfers');
+    
+      const currentAdmin = conversation.members.find(
+        m => m.userId.toString() === currentAdminId && m.role === 'admin'
+      );
+      if (!currentAdmin) throw new Error('Bạn không phải là admin');
+    
+      const newAdmin = conversation.members.find(
+        m => m.userId.toString() === newAdminId
+      );
+      if (!newAdmin) throw new Error('New admin is not a member of the group');
+    
+      // Thực hiện chuyển quyền
+      currentAdmin.role = 'member';
+      newAdmin.role = 'admin';
+      conversation.lastUpdateAt = new Date();
+    
+      return await conversation.save();
+    }
+
+    // ========= Chuyển quyền admin cho thành viên khác ===============
+    socket.on("transfer-admin", async (data) => {
+      try {
+        const { conversationId, currentAdminId, newAdminId } = data;
+        const updatedConversation = await transferAdminRole(
+          conversationId,
+          currentAdminId,
+          newAdminId
+        );
+  
+        io.to(conversationId).emit("admin-transferred", {
+          conversation: updatedConversation,
+          newAdminId,
+          oldAdminId: currentAdminId
+        });
+  
+      } catch (error) {
+        socket.emit("transfer-admin-error", {
+          message: error.message
+        });
+      }
+    });
+
+
     socket.on("disconnect", (reason) => {
       console.log("Client disconnected:", socket.id);
       if (reason === "transport close") {
