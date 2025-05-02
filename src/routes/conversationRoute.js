@@ -10,6 +10,7 @@ router.post("/conversation", verifyToken, conversationContrller.createConversati
 router.get("/groupJoin", verifyToken, conversationContrller.getGroupJoin)
 router.put("/updatePermission", verifyToken, conversationContrller.updatePermission)
 router.get("/conversationbyid/:id", conversationContrller.conversationbyid)
+router.post("/groupDisbanded", verifyToken, conversationContrller.groupDisbanded)
 
 
 export default router

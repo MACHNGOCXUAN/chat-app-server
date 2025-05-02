@@ -195,8 +195,6 @@ const socketServer = (io) => {
           .findById(savedMessage._id)
           .populate("senderId", "username avatarURL");
 
-        console.log("jjkjnk: ", messageContent);
-
         io.to(conversationId).emit("new_message", {
           ...savedMessage.toObject(),
           senderId: messageWithSender.senderId,
@@ -620,11 +618,14 @@ const socketServer = (io) => {
       }
     });
 
+    socket.on("user-online", (userId) => {
+      io.emit("user-status", { userId, isOnline: true });
+    });
 
-    socket.on("disconnect", (reason) => {
-      console.log("Client disconnected:", socket.id);
-      if (reason === "transport close") {
-        console.log("Đang chờ kết nối lại...");
+
+    socket.on("disconnect", () => {
+      if (socket.userId) {
+        io.emit("user-status", { userId: socket.userId, isOnline: false });
       }
     });
   });
