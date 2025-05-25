@@ -1,10 +1,10 @@
 import mongoose from "mongoose"
 
 const groupMemberSchema = new mongoose.Schema({
-  groupId: {
+  conversationId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: Conversation,
-    require: true
+    ref: "Conversation",
+    required: true
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -20,6 +20,8 @@ const groupMemberSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+}, {
+  timestamps: true
 })
 
 const groupMemberModel = mongoose.model("GroupMember", groupMemberSchema)

@@ -7,6 +7,10 @@ const router = express.Router()
 router.get("/conversation", verifyToken, conversationContrller.getAllConversation);
 
 router.post("/conversation", verifyToken, conversationContrller.createConversation);
+router.get("/groupJoin", verifyToken, conversationContrller.getGroupJoin)
+router.put("/updatePermission", verifyToken, conversationContrller.updatePermission)
+router.get("/conversationbyid/:id", conversationContrller.conversationbyid)
+router.post("/groupDisbanded", verifyToken, conversationContrller.groupDisbanded)
 
 
 export default router

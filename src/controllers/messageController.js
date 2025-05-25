@@ -1,6 +1,7 @@
 import messageModel from "../models/messageModel.js"
 import DeletedMessage from '../models/deleteMessageModel.js';
 import uploadFile from "../utils/file.service.js";
+import conversationModel from "../models/conversationModel.js";
 
 // Lấy tất cả tin nhắn từ cuộc trò chuyện
 const getMessageConversation = async (req, res) => {
@@ -11,10 +12,6 @@ const getMessageConversation = async (req, res) => {
       .populate("senderId", "username avatarURL")
       .sort({ timestamp: 1 })
       .exec();
-
-    if (!messages || messages.length === 0) {
-      return res.status(404).json({ success: false, message: "Không có tin nhắn nào" });
-    }
 
     return res.status(200).json({ success: true, data: messages });
   } catch (error) {
@@ -85,12 +82,73 @@ const uploadImage = async (req, res) => {
   }
 }
 
+const uploadNhieuFile = async (req, res) => {
+  try {
+    const files = req.files?.ArrayFile;
+
+    console.log("files: ", files);
+    
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({ success: false, message: 'Không có file nào được gửi lên!' });
+    }
+
+    const uploadedUrls = await Promise.all(
+      files.map(file => uploadFile(file))
+    );
+
+    res.status(200).json({ success: true, data: uploadedUrls });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+};
+
+
+const deleteMessageForUser  = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user._id;
+    const message = await messageModel.findById(messageId);
+
+    if (!message) {
+      return res.status(404).json({ success: false, message: "Tin nhắn không tồn tại" });
+    }
+
+    const conversation = await conversationModel.findById(message.conversationId);
+    const isMember = conversation.members.some(m => m.userId.equals(userId));
+
+
+    if (!isMember) {
+      return res.status(403).json({ success: false, message: "Không có quyền xóa tin nhắn" });
+    }
+
+    if (!message.deletedFor.includes(userId)) {
+      message.deletedFor.push(userId);
+      await message.save();
+    }
+
+    global._io.to(userId.toString).emit('message_deleted_for_me', { messageId })
+    io.to(message.conversationId.toString()).emit('message_deleted_for_user', {
+      messageId,
+      deletedBy: userId
+    });
+
+    res.status(200).json({ success: true, message: "Đã xóa tin nhắn thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Lỗi server. Vui lòng thử lại sau!' });
+  }
+}
+
 
 
 
 export const messageController = {
   getMessageConversation,
   getFilterMessageConversation,
-  deleteMessageLocally
-  uploadImage
+  deleteMessageLocally,
+  uploadImage,
+  uploadNhieuFile,
+  deleteMessageForUser
 }
