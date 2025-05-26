@@ -337,12 +337,12 @@ const socketServer = (io) => {
       .join(", ");
 
     const systemContent = `Đã thêm ${usernames} vào cuộc trò chuyện.`;
-
+const SYSTEM_SENDER_ID = new mongoose.Types.ObjectId("6834db4f0a9155ee70b504da");
     const savedSystemMessage = await messageModel.create({
       content: systemContent,
       conversationId,
       messageType: "system",
-      senderId: null,
+      senderId: SYSTEM_SENDER_ID,
       timestamp: new Date(),
     });
 
