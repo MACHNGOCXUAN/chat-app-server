@@ -37,6 +37,7 @@ const messageSchema = new mongoose.Schema({
   preMessage: {
     type: String
   },
+  readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], //tin chưa đọc
   deletedFor: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: "User"

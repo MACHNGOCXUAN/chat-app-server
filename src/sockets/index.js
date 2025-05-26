@@ -5,7 +5,7 @@ import messageModel from "../models/messageModel.js";
 import uploadFile from "../utils/file.service.js";
 import DeletedMessage from "../models/deleteMessageModel.js";
 import groupMemberModel from "../models/groupMember.js";
-
+import mongoose from "mongoose";
 const socketServer = (io) => {
   io.on("connection", (socket) => {
     console.log("New client connected:", socket.id);
@@ -126,10 +126,8 @@ const socketServer = (io) => {
       try {
         console.log("Data: ", data);
 
-        const { senderId, rereceiveId, content, messageType } = data;
+        const { senderId, content, messageType } = data;
         let { conversationId } = data;
-
-        console.log("data: ", data);
 
         if (!conversationId) {
           let conversation = await conversationModel.findOne({
@@ -158,7 +156,13 @@ const socketServer = (io) => {
           // Thông báo cho client về conversationId mới
           socket.emit("conversation_created", { conversationId });
         }
+        // Lấy conversation để biết thành viên
+        const conversation = await conversationModel.findById(conversationId);
 
+        // Lấy danh sách userId những người nhận (members ngoại trừ sender)
+        const receiverIds = conversation.members
+          .map((m) => m.userId.toString())
+          .filter((id) => id !== senderId);
         let messageContent = content;
 
         if (messageType == "image") {
@@ -172,15 +176,20 @@ const socketServer = (io) => {
           content: messageContent,
           messageType,
           is_last_message: true,
+          readBy: [senderId],
         });
-
         const savedMessage = await newMessage.save();
-
+        // Cập nhật conversation: lastMessage, updatedAt, tăng unreadCount cho từng receiver
+        const updateUnreadInc = {};
+        receiverIds.forEach((rId) => {
+          updateUnreadInc[`unreadCount.${rId}`] = 1;
+        });
         const updatedConversation = await conversationModel.findByIdAndUpdate(
           conversationId,
           {
             lastMessage: savedMessage._id,
             updatedAt: new Date(),
+            $inc: updateUnreadInc,
           },
           {
             new: true,
@@ -190,6 +199,13 @@ const socketServer = (io) => {
             ],
           }
         );
+        // Gửi sự kiện cập nhật số lượng tin chưa đọc cho tất cả người nhận
+        receiverIds.forEach((rId) => {
+          io.to(rId).emit("unread_updated", {
+            conversationId,
+            count: updatedConversation.unreadCount[rId] || 1,
+          });
+        });
 
         const messageWithSender = await messageModel
           .findById(savedMessage._id)
@@ -239,31 +255,31 @@ const socketServer = (io) => {
     });
 
     // Xử lý request lấy danh sách thành viên của nhóm
-socket.on("getGroupMembers", async ({ conversationId }) => {
-  try {
-    // Tìm nhóm trong cơ sở dữ liệu
-    const conversation = await conversationModel
-      .findById(conversationId)
-      .populate({
-        path: "members.userId",
-        select: "username avatarURL",
-        options: { strictPopulate: false } // tạm thời cho phép populate dù schema lỏng
-      })
+    socket.on("getGroupMembers", async ({ conversationId }) => {
+      try {
+        // Tìm nhóm trong cơ sở dữ liệu
+        const conversation = await conversationModel
+          .findById(conversationId)
+          .populate({
+            path: "members.userId",
+            select: "username avatarURL",
+            options: { strictPopulate: false }, // tạm thời cho phép populate dù schema lỏng
+          });
 
-    if (!conversation) {
-      return socket.emit("error", { message: "Không tìm thấy nhóm" });
-    }
+        if (!conversation) {
+          return socket.emit("error", { message: "Không tìm thấy nhóm" });
+        }
 
-    // Trả về danh sách thành viên của nhóm
-    socket.emit("group_members", {
-      members: conversation.members,
-      conversationId,
+        // Trả về danh sách thành viên của nhóm
+        socket.emit("group_members", {
+          members: conversation.members,
+          conversationId,
+        });
+      } catch (error) {
+        console.error("Lỗi khi lấy danh sách thành viên:", error);
+        socket.emit("error", { message: "Lỗi khi lấy danh sách thành viên" });
+      }
     });
-  } catch (error) {
-    console.error("Lỗi khi lấy danh sách thành viên:", error);
-    socket.emit("error", { message: "Lỗi khi lấy danh sách thành viên" });
-  }
-});
     // xóa tin nhắn cục bộ
     socket.on("delete_message_local", async ({ messageId, userId }) => {
       try {
@@ -298,7 +314,7 @@ socket.on("getGroupMembers", async ({ conversationId }) => {
 
         const updateConversation = await conversationModel
           .findOneAndUpdate(
-            {_id: conversationId},
+            { _id: conversationId },
             { $push: { members: { $each: newMembers } } },
             { new: true }
           )
@@ -323,174 +339,212 @@ socket.on("getGroupMembers", async ({ conversationId }) => {
       }
     });
     // xóa
-socket.on("removeMemberConversation", async ({ conversationId, userId }) => {
-      try {
-        
-        const updatedConversation = await conversationModel
-          .findOneAndUpdate(
-            { _id: conversationId },
-            { $pull: { members: { userId: userId } } }, // Loại bỏ thành viên khỏi mảng members
-            { new: true }
-          )
-          .populate("members.userId", "username avatarURL");
-    
-        // Emit sự thay đổi cho tất cả các thành viên trong nhóm
-        updatedConversation.members.forEach((member) => {
-          io.to(member.userId.toString()).emit("conversation_updated", updatedConversation);
-        });
-    
-        // Thông báo cho người dùng đã bị xóa
-        io.to(userId.toString()).emit("removed_from_group", updatedConversation);
-    
-      } catch (error) {
-        console.error("Không thể xóa thành viên:", error);
-        socket.emit("error", { message: "Không thể xóa thành viên" });
+    socket.on(
+      "removeMemberConversation",
+      async ({ conversationId, userId }) => {
+        try {
+          const updatedConversation = await conversationModel
+            .findOneAndUpdate(
+              { _id: conversationId },
+              { $pull: { members: { userId: userId } } }, // Loại bỏ thành viên khỏi mảng members
+              { new: true }
+            )
+            .populate("members.userId", "username avatarURL");
+
+          // Emit sự thay đổi cho tất cả các thành viên trong nhóm
+          updatedConversation.members.forEach((member) => {
+            io.to(member.userId.toString()).emit(
+              "conversation_updated",
+              updatedConversation
+            );
+          });
+
+          // Thông báo cho người dùng đã bị xóa
+          io.to(userId.toString()).emit(
+            "removed_from_group",
+            updatedConversation
+          );
+        } catch (error) {
+          console.error("Không thể xóa thành viên:", error);
+          socket.emit("error", { message: "Không thể xóa thành viên" });
+        }
       }
-    });
+    );
     // =================== Rời khỏi nhóm =========================
-    socket.on("leave_conversation", async ({ conversationId, userId }) => {
-  try {
-    const conversation = await conversationModel.findById(conversationId);
-    if (!conversation) {
-      return socket.emit("leave_conversation_error", {
-        message: "Cuộc trò chuyện không tồn tại",
-      });
-    }
+    socket.on("leave_conversation", async (conversationIdRaw, userIdRaw) => {
+      console.log(
+        "🔔 Sự kiện leave_conversation nhận được:",
+        conversationIdRaw,
+        userIdRaw
+      );
 
-    const memberIndex = conversation.members.findIndex((m) =>
-      m.userId.equals(userId)
-    );
-    if (memberIndex === -1) {
-      return socket.emit("leave_conversation_error", {
-        message: "Bạn không phải thành viên của cuộc trò chuyện này",
-      });
-    }
+      // if (!mongoose.Types.ObjectId.isValid(conversationIdRaw)) {
+      //   return socket.emit("leave_conversation_error", {
+      //     message: "conversationId không hợp lệ",
+      //   });
+      // }
+      try {
+        console.log("Yêu cầu rời nhóm:", { conversationIdRaw, userIdRaw });
 
-    const isAdmin = conversation.members[memberIndex].role === "admin";
-    const adminCount = conversation.members.filter((m) => m.role === "admin")
-      .length;
-    if (isAdmin && adminCount === 1) {
-      return socket.emit("leave_conversation_error", {
-        message: "Vui lòng chuyển quyền admin cho người khác",
-      });
-    }
+        const conversationId = new mongoose.Types.ObjectId(conversationIdRaw);
+        const userId = new mongoose.Types.ObjectId(userIdRaw);
 
-    conversation.members.splice(memberIndex, 1);
-    await conversation.save();
+        const conversation = await conversationModel.findById(conversationId);
 
-    // ✅ Lấy lại dữ liệu sau khi rời nhóm
-   await conversation.save();
-const updatedConversation = await conversationModel.findById(conversationId); // Cập nhật mới
+        if (!conversation) {
+          return socket.emit("leave_conversation_error", {
+            message: "Cuộc trò chuyện không tồn tại",
+          });
+        }
 
+        const memberIndex = conversation.members.findIndex((m) =>
+          m.userId.equals(userId)
+        );
 
-    // ✅ Gửi tới các thành viên còn lại
-    updatedConversation.members.forEach((member) => {
-      io.to(member.userId.toString()).emit("member_leave", {
-        conversationId,
-        userId,
-        updatedConversation,
-      });
-    });
+        if (memberIndex === -1) {
+          return socket.emit("leave_conversation_error", {
+            message: "Bạn không phải thành viên của cuộc trò chuyện này",
+          });
+        }
 
-    // ✅ Gửi cho chính người vừa rời nhóm
-    socket.emit("left_conversation", { conversationId });
-    socket.leave(conversationId);
+        const isAdmin = conversation.members[memberIndex].role === "admin";
+        const adminCount = conversation.members.filter(
+          (m) => m.role === "admin"
+        ).length;
 
-    if (updatedConversation.members.length === 0) {
-      await conversationModel.findByIdAndDelete(conversationId);
-      await messageModel.deleteMany({ conversationId });
-      io.to(conversationId).emit("conversation_deleted", {
-        conversationId,
-      });
-    }
-  } catch (error) {
-    console.error("Lỗi khi rời cuộc trò chuyện:", error);
-    socket.emit("leave_conversation_error", {
-      message: "Lỗi khi rời cuộc trò chuyện",
-    });
-  }
-});
+        if (isAdmin && adminCount === 1 && conversation.members.length > 1) {
+          return socket.emit("leave_conversation_error", {
+            message:
+              "Vui lòng chuyển quyền admin cho người khác trước khi rời nhóm.",
+          });
+        }
 
+        // Xóa người dùng khỏi danh sách thành viên
+        conversation.members.splice(memberIndex, 1);
+        await conversation.save();
 
-    socket.on("update_member_role", async (conversationId, targetUserId, newRole, userIdUpdateRole) => {
-  try {
-    const conversation = await conversationModel.findById(conversationId);
-    if (!conversation) {
-      return socket.emit("error", {
-        message: "Cuộc trò chuyện không tồn tại",
-      });
-    }
+        const updatedConversation = await conversationModel.findById(
+          conversationId
+        );
 
-    if (conversation.type !== "group") {
-      return socket.emit("error", {
-        message: "Chỉ có thể cập nhật quyền trong nhóm",
-      });
-    }
+        // Gửi thông báo đến các thành viên còn lại
+        updatedConversation.members.forEach((member) => {
+          io.to(member.userId.toString()).emit("member_leave", {
+            conversationId: conversationId.toString(),
+            userId: userId.toString(),
+            updatedConversation,
+          });
+        });
 
-    const requester = conversation.members.find((m) =>
-      m.userId.equals(userIdUpdateRole)
-    );
-    if (!requester || requester.role !== "admin") {
-      return socket.emit("error", {
-        message: "Bạn không có quyền thực hiện hành động này",
-      });
-    }
+        // Gửi phản hồi về cho chính người vừa rời nhóm
+        socket.emit("left_conversation", {
+          conversationId: conversationId.toString(),
+        });
 
-    const targetMember = conversation.members.find((m) =>
-      m.userId.equals(targetUserId)
-    );
-    if (!targetMember) {
-      return socket.emit("error", {
-        message: "Thành viên không tồn tại trong nhóm",
-      });
-    }
+        // Thoát khỏi room socket
+        socket.leave(conversationId.toString());
 
-    if (targetUserId === userIdUpdateRole) {
-      return socket.emit("error", {
-        message: "Không thể tự thay đổi quyền của chính mình",
-      });
-    }
+        // Nếu không còn thành viên nào thì xóa cuộc trò chuyện
+        if (updatedConversation.members.length === 0) {
+          await conversationModel.findByIdAndDelete(conversationId);
+          await messageModel.deleteMany({ conversationId });
 
-    // Cập nhật quyền của thành viên mục tiêu
-    targetMember.role = newRole;
-
-    // Kiểm tra nếu người yêu cầu chuyển quyền admin cho người khác, thì đổi quyền admin của họ về thành viên
-    if (newRole === "admin" && requester.role === "admin") {
-      // Tìm người admin khác để chuyển quyền admin cho họ, hoặc thay đổi quyền admin của người yêu cầu thành "member" (nếu có ít hơn 2 admin)
-      const adminCount = conversation.members.filter((m) => m.role === "admin").length;
-      if (adminCount === 1) {
-        return socket.emit("error", {
-          message: "Vui lòng đảm bảo có ít nhất một admin trong nhóm",
+          io.to(conversationId.toString()).emit("conversation_deleted", {
+            conversationId: conversationId.toString(),
+          });
+        }
+      } catch (error) {
+        console.error("Lỗi khi rời cuộc trò chuyện:", error);
+        socket.emit("leave_conversation_error", {
+          message: "Đã xảy ra lỗi khi rời cuộc trò chuyện.",
         });
       }
-
-      // Nếu đã có đủ admin, chuyển quyền admin cho người được yêu cầu
-      requester.role = "member"; // Cập nhật quyền của người yêu cầu (có thể là admin đang chuyển quyền)
-    }
-
-    await conversation.save();
-
-    const updatedConversation = await conversationModel
-      .findById(conversationId)
-      .populate("members.userId", "username avatarURL")
-      .populate("lastMessage");
-
-    // Cập nhật quyền của tất cả thành viên
-    updatedConversation.members.forEach((member) => {
-      io.to(member.userId.toString()).emit("member_role_updated", {
-        conversationId,
-        targetUserId,
-        newRole,
-        updatedConversation,
-      });
     });
-  } catch (error) {
-    console.error("Lỗi khi cập nhật quyền thành viên:", error);
-    socket.emit("error", {
-      message: "Lỗi khi cập nhật quyền thành viên",
-    });
-  }
-});
+
+    socket.on(
+      "update_member_role",
+      async (conversationId, targetUserId, newRole, userIdUpdateRole) => {
+        try {
+          const conversation = await conversationModel.findById(conversationId);
+          if (!conversation) {
+            return socket.emit("error", {
+              message: "Cuộc trò chuyện không tồn tại",
+            });
+          }
+
+          if (conversation.type !== "group") {
+            return socket.emit("error", {
+              message: "Chỉ có thể cập nhật quyền trong nhóm",
+            });
+          }
+
+          const requester = conversation.members.find((m) =>
+            m.userId.equals(userIdUpdateRole)
+          );
+          if (!requester || requester.role !== "admin") {
+            return socket.emit("error", {
+              message: "Bạn không có quyền thực hiện hành động này",
+            });
+          }
+
+          const targetMember = conversation.members.find((m) =>
+            m.userId.equals(targetUserId)
+          );
+          if (!targetMember) {
+            return socket.emit("error", {
+              message: "Thành viên không tồn tại trong nhóm",
+            });
+          }
+
+          if (targetUserId === userIdUpdateRole) {
+            return socket.emit("error", {
+              message: "Không thể tự thay đổi quyền của chính mình",
+            });
+          }
+
+          // Cập nhật quyền của thành viên mục tiêu
+          targetMember.role = newRole;
+
+          // Kiểm tra nếu người yêu cầu chuyển quyền admin cho người khác, thì đổi quyền admin của họ về thành viên
+          if (newRole === "admin" && requester.role === "admin") {
+            // Tìm người admin khác để chuyển quyền admin cho họ, hoặc thay đổi quyền admin của người yêu cầu thành "member" (nếu có ít hơn 2 admin)
+            const adminCount = conversation.members.filter(
+              (m) => m.role === "admin"
+            ).length;
+            if (adminCount === 1) {
+              return socket.emit("error", {
+                message: "Vui lòng đảm bảo có ít nhất một admin trong nhóm",
+              });
+            }
+
+            // Nếu đã có đủ admin, chuyển quyền admin cho người được yêu cầu
+            requester.role = "member"; // Cập nhật quyền của người yêu cầu (có thể là admin đang chuyển quyền)
+          }
+
+          await conversation.save();
+
+          const updatedConversation = await conversationModel
+            .findById(conversationId)
+            .populate("members.userId", "username avatarURL")
+            .populate("lastMessage");
+
+          // Cập nhật quyền của tất cả thành viên
+          updatedConversation.members.forEach((member) => {
+            io.to(member.userId.toString()).emit("member_role_updated", {
+              conversationId,
+              targetUserId,
+              newRole,
+              updatedConversation,
+            });
+          });
+        } catch (error) {
+          console.error("Lỗi khi cập nhật quyền thành viên:", error);
+          socket.emit("error", {
+            message: "Lỗi khi cập nhật quyền thành viên",
+          });
+        }
+      }
+    );
 
     // ==================== Chuyển tiếp tin nhắn ====================
     socket.on(
@@ -594,19 +648,23 @@ const updatedConversation = await conversationModel.findById(conversationId); //
                 .findById(savedMessage._id)
                 .populate("senderId", "username avatarURL");
 
-                console.log("nkjnkj: ", messageWithSender);
-                
+              console.log("nkjnkj: ", messageWithSender);
 
-                io.to(conversation?._id).emit("new_message", {
-                  ...savedMessage.toObject(),
-                  senderId: messageWithSender.senderId,
-                });
-        
-                socket.to(conversation?._id).emit("receive_message", messageWithSender);
-                socket.emit("message_sent", messageWithSender);
+              io.to(conversation?._id).emit("new_message", {
+                ...savedMessage.toObject(),
+                senderId: messageWithSender.senderId,
+              });
+
+              socket
+                .to(conversation?._id)
+                .emit("receive_message", messageWithSender);
+              socket.emit("message_sent", messageWithSender);
 
               conversation.members.forEach((member) => {
-                io.to(member.userId.toString()).emit("forwardConversation", conversation);
+                io.to(member.userId.toString()).emit(
+                  "forwardConversation",
+                  conversation
+                );
               });
 
               // Cập nhật danh sách conversation cho các thành viên
@@ -645,26 +703,31 @@ const updatedConversation = await conversationModel.findById(conversationId); //
       }
     );
 
-    async function transferAdminRole(conversationId, currentAdminId, newAdminId) {
+    async function transferAdminRole(
+      conversationId,
+      currentAdminId,
+      newAdminId
+    ) {
       const conversation = await conversationModel.findById(conversationId);
-      if (!conversation) throw new Error('Conversation not found');
-      if (conversation.type !== 'group') throw new Error('Only group chats can have admin transfers');
-    
+      if (!conversation) throw new Error("Conversation not found");
+      if (conversation.type !== "group")
+        throw new Error("Only group chats can have admin transfers");
+
       const currentAdmin = conversation.members.find(
-        m => m.userId.toString() === currentAdminId && m.role === 'admin'
+        (m) => m.userId.toString() === currentAdminId && m.role === "admin"
       );
-      if (!currentAdmin) throw new Error('Bạn không phải là admin');
-    
+      if (!currentAdmin) throw new Error("Bạn không phải là admin");
+
       const newAdmin = conversation.members.find(
-        m => m.userId.toString() === newAdminId
+        (m) => m.userId.toString() === newAdminId
       );
-      if (!newAdmin) throw new Error('New admin is not a member of the group');
-    
+      if (!newAdmin) throw new Error("New admin is not a member of the group");
+
       // Thực hiện chuyển quyền
-      currentAdmin.role = 'member';
-      newAdmin.role = 'admin';
+      currentAdmin.role = "member";
+      newAdmin.role = "admin";
       conversation.lastUpdateAt = new Date();
-    
+
       return await conversation.save();
     }
 
@@ -677,16 +740,15 @@ const updatedConversation = await conversationModel.findById(conversationId); //
           currentAdminId,
           newAdminId
         );
-  
+
         io.to(conversationId).emit("admin-transferred", {
           conversation: updatedConversation,
           newAdminId,
-          oldAdminId: currentAdminId
+          oldAdminId: currentAdminId,
         });
-  
       } catch (error) {
         socket.emit("transfer-admin-error", {
-          message: error.message
+          message: error.message,
         });
       }
     });
@@ -695,10 +757,39 @@ const updatedConversation = await conversationModel.findById(conversationId); //
       io.emit("user-status", { userId, isOnline: true });
     });
 
-
     socket.on("disconnect", () => {
       if (socket.userId) {
         io.emit("user-status", { userId: socket.userId, isOnline: false });
+      }
+    });
+
+    socket.on("mark_conversation_read", async ({ conversationId, userId }) => {
+      try {
+        // 1. Đánh dấu tất cả các tin nhắn chưa đọc là đã đọc
+        await messageModel.updateMany(
+          {
+            conversationId,
+            readBy: { $ne: userId },
+          },
+          {
+            $addToSet: { readBy: userId }, // Tránh thêm trùng userId
+          }
+        );
+
+        // 2. Reset số lượng chưa đọc
+        await conversationModel.findByIdAndUpdate(conversationId, {
+          $set: {
+            [`unreadCount.${userId}`]: 0,
+          },
+        });
+
+        // 3. Emit về client
+        io.to(userId).emit("unread_updated", {
+          conversationId,
+          count: 0,
+        });
+      } catch (error) {
+        console.error("Failed to mark conversation as read", error);
       }
     });
   });

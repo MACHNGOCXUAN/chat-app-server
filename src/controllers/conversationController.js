@@ -51,11 +51,12 @@ const getAllConversation = async (req, res) => {
   try {
     const userId = req.user._id;
     const conversations = await conversationModel.find({
-      "members.userId": userId
-    })
-    .populate('members.userId', 'username avatarURL')
-    .populate('lastMessage')
-    .sort({ updatedAt: -1 }); // sắp xếp theo thời gian cập nhật gần nhất
+  "members.userId": userId
+})
+.populate('members.userId', 'username avatarURL')
+.populate('lastMessage')
+.sort({ updatedAt: -1 });
+ // sắp xếp theo thời gian cập nhật gần nhất
 
     res.status(200).json({
       success: true,

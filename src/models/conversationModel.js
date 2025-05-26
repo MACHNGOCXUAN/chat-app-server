@@ -44,6 +44,11 @@ const conversationSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  unreadCount: { //Thông báo tin nhắn mới
+  type: Map,
+  of: Number,
+  default: {},
+},
   settings: {
     joinPermission: { // Ai cos the them thanh vien vao nhom
       type: String,
