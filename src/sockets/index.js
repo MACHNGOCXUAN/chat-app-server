@@ -304,14 +304,18 @@ const socketServer = (io) => {
     //   socket.to(conversationId).emit('user_stop_typing', { userId });
     // });
 
-    // =================== Thêm thành viên vào nhóm =========================
-    socket.on("addMemberConversation", async ({ conversationId, members }) => {
+   // =================== Thêm thành viên vào nhóm =========================
+socket.on("addMemberConversation", async ({ conversationId, members }) => {
+  const SYSTEM_SENDER_ID = new mongoose.Types.ObjectId("6834db4f0a9155ee70b504da");
+
   try {
+    // Chuẩn bị member object
     const newMembers = members.map((member) => ({
       userId: member,
       role: "member",
     }));
 
+    // Cập nhật cuộc trò chuyện
     const updateConversation = await conversationModel
       .findOneAndUpdate(
         { _id: conversationId },
@@ -320,24 +324,19 @@ const socketServer = (io) => {
       )
       .populate("members.userId", "username avatarURL");
 
-    // 🔔 Gửi cập nhật conversation cho toàn nhóm
-    updateConversation.members.forEach((member) => {
-      io.to(member.userId.toString()).emit("conversation_updated", updateConversation);
-    });
+    if (!updateConversation) {
+      return socket.emit("error", { message: "Không tìm thấy cuộc trò chuyện." });
+    }
 
-    // 🔔 Gửi thông báo riêng cho người được thêm
-    members.forEach((userId) => {
-      io.to(userId.toString()).emit("added_to_group", updateConversation);
-    });
-
-    // 🔔 Tạo message hệ thống
+    // Lấy danh sách username người được thêm
     const usernames = updateConversation.members
       .filter((mem) => members.includes(mem.userId._id.toString()))
       .map((mem) => mem.userId.username)
       .join(", ");
 
-    const systemContent = `Đã thêm ${usernames} vào cuộc trò chuyện.`;
-const SYSTEM_SENDER_ID = new mongoose.Types.ObjectId("6834db4f0a9155ee70b504da");
+    const systemContent = `✅ Đã thêm ${usernames} vào cuộc trò chuyện.`;
+
+    // Gửi tin nhắn hệ thống
     const savedSystemMessage = await messageModel.create({
       content: systemContent,
       conversationId,
@@ -346,8 +345,26 @@ const SYSTEM_SENDER_ID = new mongoose.Types.ObjectId("6834db4f0a9155ee70b504da")
       timestamp: new Date(),
     });
 
-    // 🔔 Gửi tin nhắn hệ thống đến tất cả thành viên trong nhóm
-    io.to(conversationId).emit("new_message", savedSystemMessage);
+    // Populate lại để đảm bảo có senderId -> để hiển thị trên FE
+    const populatedSystemMessage = await messageModel
+      .findById(savedSystemMessage._id)
+      .populate("senderId", "username avatarURL");
+
+    // Emit conversation_updated cho mọi thành viên
+    updateConversation.members.forEach((member) => {
+      const uid = member.userId._id.toString();
+
+      io.to(uid).emit("conversation_updated", updateConversation);
+      io.to(uid).emit("receive_message", populatedSystemMessage);
+    });
+
+    // Emit riêng cho user được thêm (nếu cần dùng event riêng)
+    members.forEach((userId) => {
+      io.to(userId.toString()).emit("added_to_group", updateConversation);
+    });
+
+    // Gửi message để cập nhật ChatList
+    io.to(conversationId).emit("new_message", populatedSystemMessage);
 
   } catch (error) {
     console.error("Không thể thêm thành viên:", error);
@@ -355,50 +372,73 @@ const SYSTEM_SENDER_ID = new mongoose.Types.ObjectId("6834db4f0a9155ee70b504da")
   }
 });
 
-    // xóa
-    socket.on(
-      "removeMemberConversation",
-      async ({ conversationId, userId }) => {
-        try {
-          const updatedConversation = await conversationModel
-            .findOneAndUpdate(
-              { _id: conversationId },
-              { $pull: { members: { userId: userId } } }, // Loại bỏ thành viên khỏi mảng members
-              { new: true }
-            )
-            .populate("members.userId", "username avatarURL");
 
-          // Emit sự thay đổi cho tất cả các thành viên trong nhóm
-          updatedConversation.members.forEach((member) => {
-            io.to(member.userId.toString()).emit(
-              "conversation_updated",
-              updatedConversation
-            );
-          });
+// XÓA THÀNH VIÊN
+socket.on("removeMemberConversation", async ({ conversationId, userId }) => {
+  const SYSTEM_SENDER_ID = new mongoose.Types.ObjectId("6834db4f0a9155ee70b504da");
 
-          // Thông báo cho người dùng đã bị xóa
-          io.to(userId.toString()).emit(
-            "removed_from_group",
-            updatedConversation
-          );
-        } catch (error) {
-          console.error("Không thể xóa thành viên:", error);
-          socket.emit("error", { message: "Không thể xóa thành viên" });
-        }
-      }
-    );
-    // =================== Rời khỏi nhóm =========================
+  try {
+    const updatedConversation = await conversationModel
+      .findOneAndUpdate(
+        { _id: conversationId },
+        { $pull: { members: { userId: userId } } }, // Xóa thành viên
+        { new: true }
+      )
+      .populate("members.userId", "username avatarURL");
+
+    if (!updatedConversation) {
+      return socket.emit("error", { message: "Không tìm thấy cuộc trò chuyện." });
+    }
+
+    // GỬI TIN NHẮN HỆ THỐNG
+    const removedUser = await userModel.findById(userId); // Lấy thông tin người bị xóa
+
+    const systemContent = `❌ ${removedUser?.username || "Một người dùng"} đã bị xóa khỏi nhóm.`;
+
+    const savedSystemMessage = await messageModel.create({
+      content: systemContent,
+      conversationId,
+      messageType: "system",
+      senderId: SYSTEM_SENDER_ID,
+      timestamp: new Date(),
+    });
+
+    // Lấy bản đầy đủ của tin nhắn hệ thống (đã populate sender)
+    const populatedSystemMessage = await messageModel
+      .findById(savedSystemMessage._id)
+      .populate("senderId", "username avatarURL");
+
+    // EMIT CHO CÁC THÀNH VIÊN CÒN LẠI
+    updatedConversation.members.forEach((member) => {
+      const userSocketId = member.userId._id.toString();
+
+      // Cập nhật lại conversation list
+      io.to(userSocketId).emit("conversation_updated", updatedConversation);
+
+      // Gửi tin nhắn realtime cho từng người trong nhóm
+      io.to(userSocketId).emit("receive_message", populatedSystemMessage);
+    });
+
+    // Gửi new_message để cập nhật Chat List (nếu dùng)
+    io.to(conversationId).emit("new_message", populatedSystemMessage);
+
+    // Thông báo người bị xóa
+    io.to(userId.toString()).emit("removed_from_group", updatedConversation);
+  } catch (error) {
+    console.error("Không thể xóa thành viên:", error);
+    socket.emit("error", { message: "Không thể xóa thành viên" });
+  }
+});
+// =================== Rời khỏi nhóm =========================
 socket.on("leave_conversation", async ({ conversationIdRaw, userIdRaw }) => {
   console.log("🔔 Sự kiện leave_conversation nhận được:", conversationIdRaw, userIdRaw);
 
   try {
-    console.log("Yêu cầu rời nhóm:", { conversationIdRaw, userIdRaw });
-
     const conversationId = new mongoose.Types.ObjectId(conversationIdRaw);
     const userId = new mongoose.Types.ObjectId(userIdRaw);
 
     const conversation = await conversationModel.findById(conversationId);
-    const user = await userModel.findById(userId); // Lấy thông tin user để dùng cho tin nhắn hệ thống
+    const user = await userModel.findById(userId); // Để tạo system message
 
     if (!conversation) {
       return socket.emit("leave_conversation_error", {
@@ -429,47 +469,58 @@ socket.on("leave_conversation", async ({ conversationIdRaw, userIdRaw }) => {
     conversation.members.splice(memberIndex, 1);
     await conversation.save();
 
-    const updatedConversation = await conversationModel.findById(conversationId);
+    const updatedConversation = await conversationModel
+      .findById(conversationId)
+      .populate("members.userId", "username avatarURL");
 
     // Gửi tin nhắn hệ thống thông báo rời nhóm
+    let systemMessage;
     if (user) {
-      const systemMessage = new messageModel({
+      const content = `🚪 ${user.username} đã rời khỏi nhóm.`;
+
+      const newSystemMessage = new messageModel({
         conversationId,
-        senderId: userId,
+        senderId: userId, // hoặc SYSTEM_ID nếu muốn đồng bộ
         messageType: "system",
-        content: `${user.username} đã rời khỏi nhóm.`,
-        is_last_message: true,
+        content,
+        timestamp: new Date(),
         readBy: [],
       });
 
-      await systemMessage.save();
+      const savedMessage = await newSystemMessage.save();
 
-      // Gửi tin nhắn hệ thống đến các thành viên còn lại
+      systemMessage = await messageModel
+        .findById(savedMessage._id)
+        .populate("senderId", "username avatarURL");
+
       updatedConversation.members.forEach((member) => {
-        io.to(member.userId.toString()).emit("new_message", {
-          message: systemMessage,
-        });
+        const uid = member.userId._id.toString();
+
+        io.to(uid).emit("receive_message", systemMessage);
+        io.to(uid).emit("conversation_updated", updatedConversation);
       });
+
+      // Gửi cho chat list (chat preview)
+      io.to(conversationId.toString()).emit("new_message", systemMessage);
     }
 
-    // Gửi thông báo cập nhật thành viên đến các client
+    // Gửi thông báo cho các thành viên còn lại (cập nhật danh sách)
     updatedConversation.members.forEach((member) => {
-      io.to(member.userId.toString()).emit("member_leave", {
+      io.to(member.userId._id.toString()).emit("member_leave", {
         conversationId: conversationId.toString(),
         userId: userId.toString(),
         updatedConversation,
       });
     });
 
-    // Gửi phản hồi về client đã rời
+    // Gửi phản hồi cho người rời nhóm
     socket.emit("left_conversation", {
       conversationId: conversationId.toString(),
     });
 
-    // Thoát room socket
     socket.leave(conversationId.toString());
 
-    // Nếu không còn ai thì xoá conversation và tin nhắn
+    // Xoá conversation nếu không còn ai
     if (updatedConversation.members.length === 0) {
       await conversationModel.findByIdAndDelete(conversationId);
       await messageModel.deleteMany({ conversationId });
@@ -557,31 +608,49 @@ const [requesterUser, targetUser] = await Promise.all([
 ]);
 
 if (requesterUser && targetUser) {
-  const systemContent = `${requesterUser.username} đã chuyển quyền quản trị cho ${targetUser.username}.`;
 
-  const systemMessage = new messageModel({
-    content: systemContent,
+ // Lấy updatedConversation một lần duy nhất
+const updatedConversation = await conversationModel
+  .findById(conversationId)
+  .populate("members.userId", "username avatarURL")
+  .populate("lastMessage");
+
+// Tạo tin nhắn hệ thống
+const content = `👑 ${requesterUser.username} đã chuyển quyền quản trị cho ${targetUser.username}.`;
+
+const systemMessage = await messageModel.create({
+  content,
+  conversationId,
+  messageType: "system",
+  senderId: userIdUpdateRole,
+  timestamp: new Date(),
+  readBy: [],
+});
+
+const populatedMessage = await messageModel
+  .findById(systemMessage._id)
+  .populate("senderId", "username avatarURL");
+
+// Emit 1 lần duy nhất trong vòng forEach này
+updatedConversation.members.forEach((member) => {
+  const uid = member.userId._id.toString();
+
+  io.to(uid).emit("receive_message", populatedMessage);
+  io.to(uid).emit("conversation_updated", updatedConversation);
+  io.to(uid).emit("member_role_updated", {
     conversationId,
-    messageType: "system",
-    senderId: userIdUpdateRole,
-    timestamp: new Date(),
-    readBy: [],
+    targetUserId,
+    newRole,
+    updatedConversation,
   });
+});
 
-  await systemMessage.save();
+// Emit tin nhắn cho toàn nhóm phòng conversationId
+io.to(conversationId.toString()).emit("new_message", populatedMessage);
 
-  // 🔔 Gửi tin nhắn hệ thống đến toàn bộ thành viên nhóm
-  updatedConversation.members.forEach((member) => {
-    io.to(member.userId._id.toString()).emit("new_message", {
-      message: systemMessage,
-    });
-  });
 }
 
-          const updatedConversation = await conversationModel
-            .findById(conversationId)
-            .populate("members.userId", "username avatarURL")
-            .populate("lastMessage");
+
 
           // Cập nhật quyền của tất cả thành viên
           updatedConversation.members.forEach((member) => {

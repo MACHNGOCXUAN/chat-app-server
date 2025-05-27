@@ -3,6 +3,7 @@ import messageModel from "../models/messageModel.js";
 
 const createConversation = async (req, res) => {
   try {
+    console.log(req.body)
     const { members, name, type } = req.body;
 
     if (type === 'private' && members.length === 2) {
