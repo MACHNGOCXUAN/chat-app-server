@@ -264,32 +264,52 @@ const socketServer = (io) => {
     // =================== Thêm thành viên vào nhóm =========================
     socket.on("addMemberConversation", async ({ conversationId, members }) => {
       try {
-        const newMembers = await members.map((member) => ({
+        const newMembers = members.map((member) => ({
           userId: member,
           role: "member",
         }));
 
         const updateConversation = await conversationModel
           .findOneAndUpdate(
-            {_id: conversationId},
+            { _id: conversationId },
             { $push: { members: { $each: newMembers } } },
             { new: true }
           )
           .populate("members.userId", "username avatarURL");
 
-        updateConversation.members.forEach((members) => {
-          io.to(members.userId.toString()).emit(
+        // 🔔 Gửi cập nhật conversation cho toàn nhóm
+        updateConversation.members.forEach((member) => {
+          io.to(member.userId.toString()).emit(
             "conversation_updated",
             updateConversation
           );
         });
+
+        // 🔔 Gửi thông báo riêng cho người được thêm
         members.forEach((userId) => {
           io.to(userId.toString()).emit("added_to_group", updateConversation);
         });
 
-        // members.forEach(userId => {
-        //   io.to(userId.toString()).emit('added_to_group', updatedConversation);
-        // });
+        // 🔔 Tạo message hệ thống
+        const usernames = updateConversation.members
+          .filter((mem) => members.includes(mem.userId._id.toString()))
+          .map((mem) => mem.userId.username)
+          .join(", ");
+
+        const systemContent = `Đã thêm ${usernames} vào cuộc trò chuyện.`;
+        const SYSTEM_SENDER_ID = new mongoose.Types.ObjectId(
+          "6834db4f0a9155ee70b504da"
+        );
+        const savedSystemMessage = await messageModel.create({
+          content: systemContent,
+          conversationId,
+          messageType: "system",
+          senderId: SYSTEM_SENDER_ID,
+          timestamp: new Date(),
+        });
+
+        // 🔔 Gửi tin nhắn hệ thống đến tất cả thành viên trong nhóm
+        io.to(conversationId).emit("new_message", savedSystemMessage);
       } catch (error) {
         console.error("Không thể thêm thành viên:", error);
         socket.emit("error", { message: "Không thể thêm thành viên" });
@@ -521,19 +541,23 @@ const socketServer = (io) => {
                 .findById(savedMessage._id)
                 .populate("senderId", "username avatarURL");
 
-                console.log("nkjnkj: ", messageWithSender);
-                
+              console.log("nkjnkj: ", messageWithSender);
 
-                io.to(conversation?._id).emit("new_message", {
-                  ...savedMessage.toObject(),
-                  senderId: messageWithSender.senderId,
-                });
-        
-                socket.to(conversation?._id).emit("receive_message", messageWithSender);
-                socket.emit("message_sent", messageWithSender);
+              io.to(conversation?._id).emit("new_message", {
+                ...savedMessage.toObject(),
+                senderId: messageWithSender.senderId,
+              });
+
+              socket
+                .to(conversation?._id)
+                .emit("receive_message", messageWithSender);
+              socket.emit("message_sent", messageWithSender);
 
               conversation.members.forEach((member) => {
-                io.to(member.userId.toString()).emit("forwardConversation", conversation);
+                io.to(member.userId.toString()).emit(
+                  "forwardConversation",
+                  conversation
+                );
               });
 
               // Cập nhật danh sách conversation cho các thành viên
@@ -572,26 +596,31 @@ const socketServer = (io) => {
       }
     );
 
-    async function transferAdminRole(conversationId, currentAdminId, newAdminId) {
+    async function transferAdminRole(
+      conversationId,
+      currentAdminId,
+      newAdminId
+    ) {
       const conversation = await conversationModel.findById(conversationId);
-      if (!conversation) throw new Error('Conversation not found');
-      if (conversation.type !== 'group') throw new Error('Only group chats can have admin transfers');
-    
+      if (!conversation) throw new Error("Conversation not found");
+      if (conversation.type !== "group")
+        throw new Error("Only group chats can have admin transfers");
+
       const currentAdmin = conversation.members.find(
-        m => m.userId.toString() === currentAdminId && m.role === 'admin'
+        (m) => m.userId.toString() === currentAdminId && m.role === "admin"
       );
-      if (!currentAdmin) throw new Error('Bạn không phải là admin');
-    
+      if (!currentAdmin) throw new Error("Bạn không phải là admin");
+
       const newAdmin = conversation.members.find(
-        m => m.userId.toString() === newAdminId
+        (m) => m.userId.toString() === newAdminId
       );
-      if (!newAdmin) throw new Error('New admin is not a member of the group');
-    
+      if (!newAdmin) throw new Error("New admin is not a member of the group");
+
       // Thực hiện chuyển quyền
-      currentAdmin.role = 'member';
-      newAdmin.role = 'admin';
+      currentAdmin.role = "member";
+      newAdmin.role = "admin";
       conversation.lastUpdateAt = new Date();
-    
+
       return await conversation.save();
     }
 
@@ -604,24 +633,100 @@ const socketServer = (io) => {
           currentAdminId,
           newAdminId
         );
-  
+
         io.to(conversationId).emit("admin-transferred", {
           conversation: updatedConversation,
           newAdminId,
-          oldAdminId: currentAdminId
+          oldAdminId: currentAdminId,
         });
-  
       } catch (error) {
         socket.emit("transfer-admin-error", {
-          message: error.message
+          message: error.message,
         });
       }
     });
 
+    // ============ Xoa thanh vien khoi nhom ==============
+    socket.on(
+      "remove_member",
+      async ({ conversationId, memberId, adminId }) => {
+        try {
+          const conversation = await conversationModel
+            .findById(conversationId)
+            .populate({
+              path: "members.userId",
+              select: "name",
+            });
+
+          if (!conversation) {
+            return socket.emit("error", {
+              message: "Cuộc trò chuyện không tồn tại",
+            });
+          }
+
+          const memberToRemove = conversation.members.find(
+            (member) => member.userId._id.toString() === memberId.toString()
+          );
+
+          if (!memberToRemove) {
+            return socket.emit("error", {
+              message: "Thành viên không tồn tại",
+            });
+          }
+
+          const user = await userModel.findById(memberId);
+
+          console.log(user);
+
+          const admin = conversation.members.find(
+            (member) => member.userId._id.toString() === adminId.toString()
+          );
+
+          if (!admin || admin.role !== "admin") {
+            return socket.emit("error", {
+              message: "Bạn không có quyền xóa thành viên",
+            });
+          }
+
+          conversation.members = conversation.members.filter(
+            (member) => member.userId._id.toString() !== memberId.toString()
+          );
+
+          await conversation.save();
+
+          const notificationMessage = await messageModel.create({
+            conversationId: conversation._id,
+            senderId: adminId,
+            content: `Đã xóa ${user.username} khỏi nhóm`,
+            messageType: "system",
+            timestamp: new Date(),
+          });
+
+          socket.to(conversationId).emit("member_removed", {
+            conversationId,
+            removedMemberId: memberId,
+            removedMemberName: user.username,
+            removedBy: adminId,
+            message: notificationMessage,
+          });
+
+          socket.to(memberId).emit("you_were_removed", {
+            conversationId,
+            removedBy: adminId,
+            groupName: conversation.name,
+          });
+        } catch (error) {
+          console.error("Error removing member:", error);
+          socket.emit("error", {
+            message: "Lỗi hệ thống",
+          });
+        }
+      }
+    );
+
     socket.on("user-online", (userId) => {
       io.emit("user-status", { userId, isOnline: true });
     });
-
 
     socket.on("disconnect", () => {
       if (socket.userId) {
